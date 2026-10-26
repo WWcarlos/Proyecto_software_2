@@ -1,0 +1,306 @@
+openapi: 3.0.3
+info:
+  title: API Logística
+  version: 1.0.0
+  description: >
+    Clientes, paquetes en custodia, envíos y su estado. El consumo de insumos
+    se registra solicitando una SALIDA a Inventarios con referencia ENVIO.
+servers:
+  - url: /logistica
+security:
+  - bearerAuth: []
+paths:
+  /clientes:
+    get:
+      summary: Listar clientes
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Clientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Cliente' }
+    post:
+      summary: Registrar cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClienteNuevo' }
+      responses:
+        '201':
+          description: Cliente creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cliente' }
+        '409': { description: Documento ya registrado }
+
+  /paquetes:
+    get:
+      summary: Listar paquetes en custodia
+      parameters:
+        - name: estado
+          in: query
+          schema:
+            type: string
+            enum: [RECIBIDO, EN_CUSTODIA, DESPACHADO, ENTREGADO]
+        - name: cliente_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Paquetes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Paquete' }
+    post:
+      summary: Registrar recepción de paquete de cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaqueteNuevo' }
+      responses:
+        '201':
+          description: Paquete registrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Paquete' }
+        '404': { description: Cliente no existe }
+
+  /envios:
+    get:
+      summary: Listar envíos
+      parameters:
+        - name: estado
+          in: query
+          schema:
+            type: string
+            enum: [CREADO, EN_PREPARACION, DESPACHADO, EN_RUTA, ENTREGADO, FALLIDO]
+        - name: desde
+          in: query
+          schema: { type: string, format: date }
+        - name: hasta
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Envíos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Envio' }
+    post:
+      summary: Crear envío
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnvioNuevo' }
+      responses:
+        '201':
+          description: Envío creado con guía
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envio' }
+        '404': { description: Cliente o paquete no existe }
+        '422': { description: Datos inválidos }
+
+  /envios/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      summary: Obtener envío con paquetes, insumos e historial de estados
+      responses:
+        '200':
+          description: Envío
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnvioDetalle' }
+        '404': { description: No existe }
+
+  /envios/{id}/estado:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      summary: Cambiar estado del envío
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [estado]
+              properties:
+                estado:
+                  type: string
+                  enum: [CREADO, EN_PREPARACION, DESPACHADO, EN_RUTA, ENTREGADO, FALLIDO]
+                observacion: { type: string }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envio' }
+        '409': { description: Transición de estado no permitida }
+
+  /envios/{id}/insumos:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      summary: Registrar consumo de insumos para el envío
+      description: >
+        Por cada línea solicita a Inventarios una SALIDA con referencia ENVIO.
+        Guarda el id del movimiento devuelto. Ejemplo: 2 cajas medianas para el envío 1001.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [insumos]
+              properties:
+                insumos:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [producto_id, bodega_id, cantidad]
+                    properties:
+                      producto_id: { type: integer }
+                      bodega_id: { type: integer }
+                      cantidad: { type: integer, minimum: 1 }
+      responses:
+        '201':
+          description: Consumo registrado
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EnvioInsumo' }
+        '409':
+          description: STOCK_INSUFICIENTE en Inventarios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502': { description: Inventarios no disponible }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Cliente:
+      type: object
+      properties:
+        id: { type: integer }
+        tipo_documento: { type: string, example: CC }
+        numero_documento: { type: string }
+        nombre: { type: string }
+        direccion: { type: string }
+        telefono: { type: string }
+        email: { type: string, format: email }
+    ClienteNuevo:
+      type: object
+      required: [tipo_documento, numero_documento, nombre]
+      properties:
+        tipo_documento: { type: string }
+        numero_documento: { type: string }
+        nombre: { type: string }
+        direccion: { type: string }
+        telefono: { type: string }
+        email: { type: string, format: email }
+    Paquete:
+      type: object
+      properties:
+        id: { type: integer }
+        cliente_id: { type: integer }
+        codigo_barras: { type: string }
+        peso_kg: { type: number }
+        descripcion: { type: string }
+        estado: { type: string }
+    PaqueteNuevo:
+      type: object
+      required: [cliente_id, codigo_barras]
+      properties:
+        cliente_id: { type: integer }
+        codigo_barras: { type: string }
+        peso_kg: { type: number }
+        descripcion: { type: string }
+    Envio:
+      type: object
+      properties:
+        id: { type: integer }
+        guia_numero: { type: string, example: "GUI-000123" }
+        cliente_id: { type: integer }
+        bodega_origen_id: { type: integer }
+        destino: { type: string }
+        estado_actual: { type: string }
+        fecha_creacion: { type: string, format: date-time }
+    EnvioNuevo:
+      type: object
+      required: [cliente_id, bodega_origen_id, destino, paquetes]
+      properties:
+        cliente_id: { type: integer }
+        bodega_origen_id: { type: integer }
+        destino: { type: string }
+        paquetes:
+          type: array
+          minItems: 1
+          items: { type: integer, description: "ids de paquetes en custodia" }
+    EnvioDetalle:
+      allOf:
+        - $ref: '#/components/schemas/Envio'
+        - type: object
+          properties:
+            paquetes:
+              type: array
+              items: { $ref: '#/components/schemas/Paquete' }
+            insumos:
+              type: array
+              items: { $ref: '#/components/schemas/EnvioInsumo' }
+            historial_estados:
+              type: array
+              items:
+                type: object
+                properties:
+                  estado: { type: string }
+                  observacion: { type: string }
+                  usuario_id: { type: integer }
+                  fecha: { type: string, format: date-time }
+    EnvioInsumo:
+      type: object
+      properties:
+        id: { type: integer }
+        envio_id: { type: integer }
+        producto_id: { type: integer }
+        cantidad: { type: integer }
+        movimiento_salida_id: { type: integer, description: "Id del movimiento en Inventarios" }
+    Error:
+      type: object
+      properties:
+        codigo: { type: string }
+        mensaje: { type: string }
+        detalles:
+          type: array
+          items: { type: object }

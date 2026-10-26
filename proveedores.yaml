@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: API Proveedores
+  version: 1.0.0
+  description: Gestión de proveedores de insumos y sus condiciones comerciales.
+servers:
+  - url: /proveedores
+security:
+  - bearerAuth: []
+paths:
+  /:
+    get:
+      summary: Listar proveedores
+      parameters:
+        - name: activo
+          in: query
+          schema: { type: boolean }
+        - name: q
+          in: query
+          description: Búsqueda por razón social o NIT
+          schema: { type: string }
+      responses:
+        '200':
+          description: Lista de proveedores
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Proveedor' }
+    post:
+      summary: Registrar proveedor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProveedorNuevo' }
+      responses:
+        '201':
+          description: Proveedor creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Proveedor' }
+        '409': { description: NIT ya registrado }
+        '422': { description: Datos inválidos }
+
+  /{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      summary: Obtener proveedor
+      responses:
+        '200':
+          description: Proveedor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Proveedor' }
+        '404': { description: No existe }
+    put:
+      summary: Actualizar proveedor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProveedorNuevo' }
+      responses:
+        '200':
+          description: Proveedor actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Proveedor' }
+        '404': { description: No existe }
+
+  /{id}/estado:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      summary: Activar o desactivar proveedor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [activo]
+              properties:
+                activo: { type: boolean }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Proveedor' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Proveedor:
+      type: object
+      properties:
+        id: { type: integer }
+        nit: { type: string, example: "900123456-7" }
+        razon_social: { type: string }
+        contacto_nombre: { type: string }
+        email: { type: string, format: email }
+        telefono: { type: string }
+        direccion: { type: string }
+        condiciones_pago: { type: string, example: "30 días" }
+        plazo_entrega_dias: { type: integer }
+        activo: { type: boolean }
+    ProveedorNuevo:
+      type: object
+      required: [nit, razon_social]
+      properties:
+        nit: { type: string }
+        razon_social: { type: string }
+        contacto_nombre: { type: string }
+        email: { type: string, format: email }
+        telefono: { type: string }
+        direccion: { type: string }
+        condiciones_pago: { type: string }
+        plazo_entrega_dias: { type: integer }

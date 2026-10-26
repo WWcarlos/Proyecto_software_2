@@ -1,0 +1,224 @@
+openapi: 3.0.3
+info:
+  title: API Usuarios
+  version: 1.0.0
+  description: Autenticación, usuarios, roles y permisos.
+servers:
+  - url: /usuarios
+paths:
+  /auth/login:
+    post:
+      summary: Iniciar sesión y obtener token JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Autenticado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, example: Bearer }
+                  expires_in: { type: integer, example: 3600 }
+        '401': { description: Credenciales inválidas }
+
+  /auth/validar:
+    get:
+      summary: Validar token (uso interno del Gateway)
+      description: Devuelve identidad, roles y permisos del token.
+      responses:
+        '200':
+          description: Token válido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Sesion' }
+        '401': { description: Token inválido o expirado }
+
+  /:
+    get:
+      summary: Listar usuarios
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usuarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Usuario' }
+    post:
+      summary: Crear usuario
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UsuarioNuevo' }
+      responses:
+        '201':
+          description: Usuario creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '409': { description: Email ya registrado }
+
+  /{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      summary: Obtener usuario
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usuario
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+        '404': { description: No existe }
+    put:
+      summary: Actualizar datos del usuario
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre: { type: string }
+                activo: { type: boolean }
+      responses:
+        '200':
+          description: Actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+
+  /{id}/roles:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    put:
+      summary: Reemplazar roles del usuario
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roles]
+              properties:
+                roles:
+                  type: array
+                  items: { type: integer }
+      responses:
+        '200':
+          description: Roles asignados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usuario' }
+
+  /roles:
+    get:
+      summary: Listar roles con sus permisos
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Rol' }
+
+  /permisos:
+    get:
+      summary: Listar permisos disponibles
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Permisos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    codigo: { type: string, example: "inventarios.movimientos.crear" }
+                    descripcion: { type: string }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Usuario:
+      type: object
+      properties:
+        id: { type: integer }
+        nombre: { type: string }
+        email: { type: string, format: email }
+        activo: { type: boolean }
+        roles:
+          type: array
+          items: { type: string, example: BODEGUERO }
+        ultimo_acceso: { type: string, format: date-time }
+    UsuarioNuevo:
+      type: object
+      required: [nombre, email, password]
+      properties:
+        nombre: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 10 }
+        roles:
+          type: array
+          items: { type: integer }
+    Rol:
+      type: object
+      properties:
+        id: { type: integer }
+        nombre: { type: string, example: BODEGUERO }
+        descripcion: { type: string }
+        permisos:
+          type: array
+          items: { type: string }
+    Sesion:
+      type: object
+      properties:
+        usuario_id: { type: integer }
+        email: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        permisos:
+          type: array
+          items: { type: string }
+        expira_en: { type: string, format: date-time }

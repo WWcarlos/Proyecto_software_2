@@ -1,0 +1,97 @@
+openapi: 3.0.3
+info:
+  title: API Analítica
+  version: 1.0.0
+  description: Reportes e indicadores derivados. Fuente de consulta, no fuente autorizada.
+servers:
+  - url: /analitica
+security:
+  - bearerAuth: []
+paths:
+  /indicadores:
+    get:
+      summary: Listar indicadores disponibles y su último valor
+      parameters:
+        - name: dimension
+          in: query
+          schema: { type: string, enum: [bodega, producto, cliente] }
+      responses:
+        '200':
+          description: Indicadores
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Indicador' }
+
+  /indicadores/{nombre}:
+    parameters:
+      - name: nombre
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [ROTACION_INVENTARIO, STOCK_BAJO, ENVIOS_DIA]
+      - name: desde
+        in: query
+        schema: { type: string, format: date }
+      - name: hasta
+        in: query
+        schema: { type: string, format: date }
+    get:
+      summary: Serie histórica de un indicador
+      responses:
+        '200':
+          description: Serie de valores
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Indicador' }
+
+  /reportes/inventario:
+    get:
+      summary: Resumen de inventario por bodega
+      parameters:
+        - name: bodega_id
+          in: query
+          schema: { type: integer }
+        - name: formato
+          in: query
+          schema: { type: string, enum: [json, csv], default: json }
+      responses:
+        '200':
+          description: Resumen
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    bodega_id: { type: integer }
+                    producto_id: { type: integer }
+                    cantidad_disponible: { type: integer }
+                    stock_minimo: { type: integer }
+                    entradas_periodo: { type: integer }
+                    salidas_periodo: { type: integer }
+            text/csv:
+              schema: { type: string }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Indicador:
+      type: object
+      properties:
+        nombre: { type: string, example: STOCK_BAJO }
+        dimension: { type: string }
+        clave_dimension: { type: string }
+        valor: { type: number }
+        periodo_inicio: { type: string, format: date }
+        periodo_fin: { type: string, format: date }
+        calculado_en: { type: string, format: date-time }
