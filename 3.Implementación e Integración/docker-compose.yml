@@ -1,0 +1,92 @@
+services:
+  # ===================================================================
+  # INVENTARIOS y ANALÍTICA
+  # ===================================================================
+  mysql-inventarios:
+    image: mysql:8.0
+    container_name: mysql-inventarios
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: clave
+      MYSQL_DATABASE: bd_inventarios
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./ms-inventarios/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - vol_mysql_inventarios:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - red-microservicios
+
+  ms-inventarios:
+    build: ./ms-inventarios
+    container_name: ms-inventarios
+    restart: always
+    depends_on:
+      mysql-inventarios:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-inventarios
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: clave
+      DB_NAME: bd_inventarios
+      token: mi-token-super-secreto
+      ANALITICA_URL: http://ms-analitica:5000
+      VALIDAR_PRODUCTO: "false"
+      PRODUCTOS_URL: http://ms-productos:5000
+    ports:
+      - "5001:5000"
+    networks:
+      - red-microservicios
+
+  mysql-analitica:
+    image: mysql:8.0
+    container_name: mysql-analitica
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: clave
+      MYSQL_DATABASE: bd_analitica
+    ports:
+      - "3308:3306"
+    volumes:
+      - ./ms-analitica/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - vol_mysql_analitica:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - red-microservicios
+
+  ms-analitica:
+    build: ./ms-analitica
+    container_name: ms-analitica
+    restart: always
+    depends_on:
+      mysql-analitica:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-analitica
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: clave
+      DB_NAME: bd_analitica
+      token: mi-token-super-secreto
+    ports:
+      - "5002:5000"
+    networks:
+      - red-microservicios
+
+volumes:
+  vol_mysql_inventarios:
+  vol_mysql_analitica:
+
+networks:
+  red-microservicios:
+    driver: bridge

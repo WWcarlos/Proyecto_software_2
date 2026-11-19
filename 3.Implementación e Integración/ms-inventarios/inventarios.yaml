@@ -1,0 +1,235 @@
+openapi: 3.0.3
+info:
+  title: API Inventarios
+  version: 1.0.0
+  description: >
+    Fuente autorizada de existencias. Registra entradas, salidas, ajustes, traslados
+    y devoluciones. Expone alertas de stock mínimo.
+servers:
+  - url: /inventarios
+security:
+  - bearerAuth: []
+paths:
+  /bodegas:
+    get:
+      summary: Listar bodegas o centros de distribución
+      responses:
+        '200':
+          description: Bodegas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Bodega' }
+    post:
+      summary: Crear bodega
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BodegaNueva' }
+      responses:
+        '201':
+          description: Bodega creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bodega' }
+        '409': { description: Código ya existe }
+
+  /saldos:
+    get:
+      summary: Consultar existencias
+      parameters:
+        - name: producto_id
+          in: query
+          schema: { type: integer }
+        - name: bodega_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Saldos por producto y bodega
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Saldo' }
+
+  /saldos/{producto_id}/{bodega_id}/stock-minimo:
+    parameters:
+      - name: producto_id
+        in: path
+        required: true
+        schema: { type: integer }
+      - name: bodega_id
+        in: path
+        required: true
+        schema: { type: integer }
+    put:
+      summary: Definir stock mínimo para un producto en una bodega
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stock_minimo]
+              properties:
+                stock_minimo: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Saldo' }
+
+  /alertas/stock-minimo:
+    get:
+      summary: Listar productos con existencias por debajo del mínimo
+      responses:
+        '200':
+          description: Alertas activas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Saldo' }
+
+  /movimientos:
+    get:
+      summary: Consultar movimientos (trazabilidad)
+      parameters:
+        - name: producto_id
+          in: query
+          schema: { type: integer }
+        - name: bodega_id
+          in: query
+          schema: { type: integer }
+        - name: tipo
+          in: query
+          schema:
+            type: string
+            enum: [ENTRADA, SALIDA, AJUSTE, TRASLADO, DEVOLUCION]
+        - name: referencia_tipo
+          in: query
+          schema: { type: string, enum: [ORDEN_COMPRA, ENVIO, AJUSTE_MANUAL] }
+        - name: referencia_id
+          in: query
+          schema: { type: integer }
+        - name: desde
+          in: query
+          schema: { type: string, format: date-time }
+        - name: hasta
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Movimientos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Movimiento' }
+    post:
+      summary: Registrar movimiento de inventario
+      description: >
+        Valida existencias suficientes para SALIDA, AJUSTE negativo y TRASLADO.
+        Las ENTRADAS provenientes de Compras llegan con referencia ORDEN_COMPRA.
+        Las SALIDAS por consumo llegan con referencia ENVIO.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MovimientoNuevo' }
+      responses:
+        '201':
+          description: Movimiento registrado y saldo actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Movimiento' }
+        '409':
+          description: STOCK_INSUFICIENTE
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { description: Datos inválidos }
+
+  /movimientos/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      summary: Obtener movimiento
+      responses:
+        '200':
+          description: Movimiento
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Movimiento' }
+        '404': { description: No existe }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Bodega:
+      type: object
+      properties:
+        id: { type: integer }
+        codigo: { type: string, example: "BOG-01" }
+        nombre: { type: string }
+        ubicacion: { type: string }
+        activa: { type: boolean }
+    BodegaNueva:
+      type: object
+      required: [codigo, nombre]
+      properties:
+        codigo: { type: string }
+        nombre: { type: string }
+        ubicacion: { type: string }
+    Saldo:
+      type: object
+      properties:
+        producto_id: { type: integer }
+        bodega_id: { type: integer }
+        cantidad_disponible: { type: integer, example: 98 }
+        stock_minimo: { type: integer, example: 20 }
+        bajo_minimo: { type: boolean }
+        actualizado_en: { type: string, format: date-time }
+    MovimientoNuevo:
+      type: object
+      required: [tipo, producto_id, cantidad]
+      properties:
+        tipo:
+          type: string
+          enum: [ENTRADA, SALIDA, AJUSTE, TRASLADO, DEVOLUCION]
+        producto_id: { type: integer }
+        cantidad: { type: integer, minimum: 1, description: "Siempre positiva; el signo lo define el tipo" }
+        bodega_origen_id: { type: integer, nullable: true }
+        bodega_destino_id: { type: integer, nullable: true }
+        motivo: { type: string }
+        referencia_tipo:
+          type: string
+          enum: [ORDEN_COMPRA, ENVIO, AJUSTE_MANUAL]
+        referencia_id: { type: integer }
+    Movimiento:
+      allOf:
+        - $ref: '#/components/schemas/MovimientoNuevo'
+        - type: object
+          properties:
+            id: { type: integer }
+            usuario_id: { type: integer }
+            fecha: { type: string, format: date-time }
+    Error:
+      type: object
+      properties:
+        codigo: { type: string, example: "STOCK_INSUFICIENTE" }
+        mensaje: { type: string }
+        detalles:
+          type: array
+          items: { type: object }
