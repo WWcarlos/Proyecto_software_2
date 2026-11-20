@@ -1,0 +1,187 @@
+openapi: 3.0.3
+info:
+  title: API Productos
+  version: 1.0.0
+  description: Catálogo de insumos (productos, categorías y unidades de medida).
+servers:
+  - url: /productos
+security:
+  - bearerAuth: []
+paths:
+  /:
+    get:
+      summary: Listar productos
+      parameters:
+        - name: categoria_id
+          in: query
+          schema: { type: integer }
+        - name: q
+          in: query
+          description: Búsqueda por nombre o SKU
+          schema: { type: string }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/size'
+      responses:
+        '200':
+          description: Lista paginada de productos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaProductos'
+        '401': { $ref: '#/components/responses/NoAutorizado' }
+    post:
+      summary: Crear producto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductoNuevo' }
+      responses:
+        '201':
+          description: Producto creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Producto' }
+        '409': { description: SKU ya existe }
+        '422': { $ref: '#/components/responses/ValidacionFallida' }
+
+  /{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      summary: Obtener producto por id
+      responses:
+        '200':
+          description: Producto encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Producto' }
+        '404': { description: No existe }
+    put:
+      summary: Actualizar producto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductoNuevo' }
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Producto' }
+        '404': { description: No existe }
+
+  /categorias:
+    get:
+      summary: Listar categorías (árbol o plano)
+      parameters:
+        - name: padre_id
+          in: query
+          description: Filtra subcategorías de una categoría padre
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Categorías
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Categoria' }
+    post:
+      summary: Crear categoría o subcategoría
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoriaNueva' }
+      responses:
+        '201':
+          description: Creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Categoria' }
+
+  /unidades-medida:
+    get:
+      summary: Listar unidades de medida
+      responses:
+        '200':
+          description: Unidades
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UnidadMedida' }
+
+components:
+  parameters:
+    page:
+      name: page
+      in: query
+      schema: { type: integer, default: 1, minimum: 1 }
+    size:
+      name: size
+      in: query
+      schema: { type: integer, default: 20, maximum: 100 }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    NoAutorizado:
+      description: Token ausente o inválido
+    ValidacionFallida:
+      description: Datos inválidos
+  schemas:
+    Producto:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        sku: { type: string, example: "CAJ-MED-001" }
+        nombre: { type: string, example: "Caja mediana" }
+        descripcion: { type: string }
+        categoria_id: { type: integer }
+        unidad_medida_id: { type: integer }
+        activo: { type: boolean }
+    ProductoNuevo:
+      type: object
+      required: [sku, nombre, categoria_id, unidad_medida_id]
+      properties:
+        sku: { type: string }
+        nombre: { type: string }
+        descripcion: { type: string }
+        categoria_id: { type: integer }
+        unidad_medida_id: { type: integer }
+    PaginaProductos:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Producto' }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+    Categoria:
+      type: object
+      properties:
+        id: { type: integer }
+        nombre: { type: string }
+        padre_id: { type: integer, nullable: true }
+        activa: { type: boolean }
+    CategoriaNueva:
+      type: object
+      required: [nombre]
+      properties:
+        nombre: { type: string }
+        padre_id: { type: integer, nullable: true }
+    UnidadMedida:
+      type: object
+      properties:
+        id: { type: integer }
+        codigo: { type: string, example: "UN" }
+        nombre: { type: string, example: "Unidad" }
