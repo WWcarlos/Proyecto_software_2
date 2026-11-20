@@ -1,0 +1,31 @@
+CREATE DATABASE IF NOT EXISTS bd_analitica
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE bd_analitica;
+
+CREATE TABLE IF NOT EXISTS EVENTO_RECIBIDO (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    evento_id VARCHAR(100) NOT NULL UNIQUE,
+    tipo_evento VARCHAR(80) NOT NULL,
+    producto_id INT NULL,
+    bodega_id INT NULL,
+    cantidad INT NULL,
+    tipo_movimiento VARCHAR(40) NULL,
+    payload JSON NOT NULL,
+    recibido_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS INDICADOR (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(80) NOT NULL UNIQUE,
+    valor DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+    unidad VARCHAR(30) NOT NULL,
+    actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+INSERT INTO INDICADOR (nombre, valor, unidad) VALUES
+    ('ROTACION_INVENTARIO', 0.00, 'unidades_movidas'),
+    ('STOCK_BAJO', 0.00, 'alertas'),
+    ('ENVIOS_DIA', 0.00, 'envios')
+ON DUPLICATE KEY UPDATE nombre = nombre;

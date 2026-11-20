@@ -6,7 +6,10 @@ info:
     Fuente autorizada de existencias. Registra entradas, salidas, ajustes, traslados
     y devoluciones. Expone alertas de stock mínimo.
 servers:
+  - url: /
+    description: Acceso directo al contenedor
   - url: /inventarios
+    description: A través del API Gateway
 security:
   - bearerAuth: []
 paths:
