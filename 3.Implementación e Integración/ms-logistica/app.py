@@ -19,8 +19,9 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "clave")
 DB_NAME = os.getenv("DB_NAME", "bd_logistica")
 API_TOKEN = os.getenv("token", "mi-token-super-secreto")
 
-# Conexion hacia Inventarios (del integrante 2)
-INVENTARIOS_URL = os.getenv("INVENTARIOS_URL", "http://ms-inventarios:5000")
+# Conexion hacia Inventarios (del integrante 2). En la red del Gateway el
+# servicio se llama "inventarios" y escucha en el puerto 5000.
+INVENTARIOS_URL = os.getenv("INVENTARIOS_URL", "http://inventarios:5000")
 # "stub" simula Inventarios para probar sin depender del otro servicio.
 # "http" hace la llamada real.
 INVENTARIOS_MODE = os.getenv("INVENTARIOS_MODE", "stub")
@@ -463,4 +464,4 @@ def registrar_insumos(envio_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)

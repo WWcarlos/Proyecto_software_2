@@ -40,9 +40,7 @@ def serializar(f):
     }
 
 
-# =====================================================================
 # MIDDLEWARE DE SEGURIDAD (token de servicio)
-# =====================================================================
 @app.before_request
 def verificar_token():
     if request.method == "OPTIONS" or request.path in ("/health", "/docs", "/openapi.yaml"):
@@ -66,9 +64,7 @@ def verificar_token():
     return None
 
 
-# =====================================================================
 # SALUD Y DOCUMENTACIÓN
-# =====================================================================
 @app.get("/health")
 def health():
     return jsonify(status="ok", servicio="proveedores"), 200
@@ -95,9 +91,7 @@ def swagger_ui():
 </html>""", 200, {"Content-Type": "text/html"}
 
 
-# =====================================================================
 # PROVEEDORES
-# =====================================================================
 @app.get("/")
 def listar_proveedores():
     activo = request.args.get("activo")
@@ -238,4 +232,4 @@ def cambiar_estado(proveedor_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)
