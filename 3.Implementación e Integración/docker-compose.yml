@@ -1,7 +1,5 @@
 services:
-  # ===================================================================
   # INVENTARIOS y ANALÍTICA
-  # ===================================================================
   mysql-inventarios:
     image: mysql:8.0
     container_name: mysql-inventarios
@@ -83,10 +81,131 @@ services:
     networks:
       - red-microservicios
 
+  mysql-productos:
+    image: mysql:8.0
+    container_name: mysql-productos
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: clave
+      MYSQL_DATABASE: bd_productos
+    volumes:
+      - ./ms-productos/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - vol_mysql_productos:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - red-gateway
+
+  productos:
+    build: ./ms-productos
+    container_name: productos
+    restart: always
+    depends_on:
+      mysql-productos:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-productos
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: clave
+      DB_NAME: bd_productos
+      token: ${SERVICE_TOKEN:-mi-token-super-secreto}
+    ports:
+      - "5003:8000"
+    networks:
+      - red-gateway
+
+  mysql-proveedores:
+    image: mysql:8.0
+    container_name: mysql-proveedores
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: clave
+      MYSQL_DATABASE: bd_proveedores
+    volumes:
+      - ./ms-proveedores/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - vol_mysql_proveedores:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - red-gateway
+
+  proveedores:
+    build: ./ms-proveedores
+    container_name: proveedores
+    restart: always
+    depends_on:
+      mysql-proveedores:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-proveedores
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: clave
+      DB_NAME: bd_proveedores
+      token: ${SERVICE_TOKEN:-mi-token-super-secreto}
+    ports:
+      - "5004:8000"
+    networks:
+      - red-gateway
+
+  mysql-logistica:
+    image: mysql:8.0
+    container_name: mysql-logistica
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: clave
+      MYSQL_DATABASE: bd_logistica
+    volumes:
+      - ./ms-logistica/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - vol_mysql_logistica:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - red-gateway
+
+  logistica:
+    build: ./ms-logistica
+    container_name: logistica
+    restart: always
+    depends_on:
+      mysql-logistica:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-logistica
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: clave
+      DB_NAME: bd_logistica
+      token: ${SERVICE_TOKEN:-mi-token-super-secreto}
+      # Para la integracion con Inventarios real: cambiar a http.
+      # Mientras tanto, modo simulado para probar sin depender del otro servicio.
+      INVENTARIOS_MODE: stub
+      INVENTARIOS_URL: http://inventarios:5000
+    ports:
+      - "5005:8000"
+    networks:
+      - red-gateway
+
 volumes:
   vol_mysql_inventarios:
   vol_mysql_analitica:
+  vol_mysql_productos:
+  vol_mysql_proveedores:
+  vol_mysql_logistica:
 
 networks:
+  red-gateway:
+    external: true
+    name: red-gateway
   red-microservicios:
     driver: bridge
