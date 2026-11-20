@@ -12,6 +12,7 @@ load_dotenv()
 
 app = Flask(__name__)
 
+
 DB_HOST = os.getenv("DB_HOST", "mysql-inventarios")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
 DB_USER = os.getenv("DB_USER", "root")
@@ -32,6 +33,8 @@ def get_db():
         password=DB_PASSWORD,
         database=DB_NAME,
     )
+
+
 
 
 def error_response(codigo, mensaje, status_code, detalles=None):
