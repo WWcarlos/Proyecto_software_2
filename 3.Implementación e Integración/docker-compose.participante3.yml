@@ -1,0 +1,104 @@
+services:
+  # ===================================================================
+  # API GATEWAY, USUARIOS y COMPRAS  (Participante 3)
+  # ===================================================================
+  ms-gateway:
+    build: ./ms-gateway
+    container_name: ms-gateway
+    restart: always
+    depends_on:
+      - ms-usuarios
+      - ms-compras
+    environment:
+      USUARIOS_URL: http://ms-usuarios:5000
+      COMPRAS_URL: http://ms-compras:5000
+      INVENTARIOS_URL: http://ms-inventarios:5000
+      ANALITICA_URL: http://ms-analitica:5000
+      PRODUCTOS_URL: http://ms-productos:5000
+      PROVEEDORES_URL: http://ms-proveedores:5000
+      LOGISTICA_URL: http://ms-logistica:5000
+    ports:
+      - "8080:5000"          # único punto de entrada externo
+    networks:
+      - red-microservicios
+
+  mysql-usuarios:
+    image: mysql:8.0
+    container_name: mysql-usuarios
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: clave
+      MYSQL_DATABASE: bd_usuarios
+    volumes:
+      - vol_mysql_usuarios:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - red-microservicios
+
+  ms-usuarios:
+    build: ./ms-usuarios
+    container_name: ms-usuarios
+    restart: always
+    depends_on:
+      mysql-usuarios:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-usuarios
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: clave
+      DB_NAME: bd_usuarios
+      JWT_SECRET: ${JWT_SECRET:-cambiar-este-secreto-en-desarrollo-0123456789}
+      JWT_EXPIRES_SECONDS: "3600"
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@inventarios.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin12345!}
+    networks:
+      - red-microservicios
+
+  mysql-compras:
+    image: mysql:8.0
+    container_name: mysql-compras
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: clave
+      MYSQL_DATABASE: bd_compras
+    volumes:
+      - vol_mysql_compras:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - red-microservicios
+
+  ms-compras:
+    build: ./ms-compras
+    container_name: ms-compras
+    restart: always
+    depends_on:
+      mysql-compras:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql-compras
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: clave
+      DB_NAME: bd_compras
+      PROVEEDORES_URL: http://ms-proveedores:5000
+      PRODUCTOS_URL: http://ms-productos:5000
+      INVENTARIOS_URL: http://ms-inventarios:5000
+    networks:
+      - red-microservicios
+
+volumes:
+  vol_mysql_usuarios:
+  vol_mysql_compras:
+
+networks:
+  red-microservicios:
+    driver: bridge
