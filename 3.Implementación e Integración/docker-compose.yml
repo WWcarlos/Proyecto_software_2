@@ -1,211 +1,260 @@
+# Sistema de Gestión de Inventarios - microservicios (Flask + MySQL)
+# Un solo compose: el API Gateway es el ÚNICO servicio que publica un puerto (8080).
+# Cada microservicio tiene su propia base de datos MySQL, accesible solo desde su servicio.
+#
+#   cp .env.example .env     (cambia los valores)
+#   docker compose up --build
+#
+# Docker Compose es apoyo de desarrollo local; la orquestación final del proyecto será con Kubernetes.
+
+x-db: &db
+  image: mysql:8.4
+  restart: unless-stopped
+  networks: [red-interna]
+
+x-svc: &svc
+  restart: unless-stopped
+  networks: [red-interna]
+
+x-env-comun: &env-comun
+  token: ${SERVICE_TOKEN:-mi-token-super-secreto}      # los ms-* leen la variable "token"
+  SERVICE_TOKEN: ${SERVICE_TOKEN:-mi-token-super-secreto}
+  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+  GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+
 services:
-  # INVENTARIOS y ANALÍTICA
-  mysql-inventarios:
-    image: mysql:8.0
-    container_name: mysql-inventarios
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: clave
-      MYSQL_DATABASE: bd_inventarios
+  # ------------------------------------------------------------ API GATEWAY
+  gateway:
+    <<: *svc
+    build: ./ms-gateway
+    container_name: gateway
     ports:
-      - "3307:3306"
-    volumes:
-      - ./ms-inventarios/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - vol_mysql_inventarios:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - red-microservicios
-
-  ms-inventarios:
-    build: ./ms-inventarios
-    container_name: ms-inventarios
-    restart: always
+      - "8080:8000"          # único puerto expuesto al exterior
+    environment:
+      USUARIOS_URL: http://usuarios:8000
+      COMPRAS_URL: http://compras:8000
+      PRODUCTOS_URL: http://productos:8000
+      PROVEEDORES_URL: http://proveedores:8000
+      INVENTARIOS_URL: http://inventarios:8000
+      LOGISTICA_URL: http://logistica:8000
+      ANALITICA_URL: http://analitica:8000
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-mi-token-super-secreto}
     depends_on:
-      mysql-inventarios:
-        condition: service_healthy
-    environment:
-      DB_HOST: mysql-inventarios
-      DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: clave
-      DB_NAME: bd_inventarios
-      token: mi-token-super-secreto
-      ANALITICA_URL: http://ms-analitica:5000
-      VALIDAR_PRODUCTO: "false"
-      PRODUCTOS_URL: http://ms-productos:5000
-    ports:
-      - "5001:5000"
-    networks:
-      - red-microservicios
+      usuarios: { condition: service_healthy }
+      compras: { condition: service_healthy }
+      productos: { condition: service_healthy }
+      proveedores: { condition: service_healthy }
+      inventarios: { condition: service_healthy }
+      logistica: { condition: service_healthy }
+      analitica: { condition: service_healthy }
 
-  mysql-analitica:
-    image: mysql:8.0
-    container_name: mysql-analitica
-    restart: always
+  # ------------------------------------------------------------ USUARIOS
+  usuarios:
+    <<: *svc
+    build: ./ms-usuarios
+    container_name: usuarios
     environment:
-      MYSQL_ROOT_PASSWORD: clave
-      MYSQL_DATABASE: bd_analitica
-    ports:
-      - "3308:3306"
-    volumes:
-      - ./ms-analitica/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - vol_mysql_analitica:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - red-microservicios
-
-  ms-analitica:
-    build: ./ms-analitica
-    container_name: ms-analitica
-    restart: always
+      DATABASE_URL: mysql+pymysql://usuarios:usuarios@usuarios-db:3306/usuarios?charset=utf8mb4
+      JWT_SECRET: ${JWT_SECRET:-cambiar-este-secreto-en-desarrollo-0123456789}
+      JWT_EXPIRES_SECONDS: "3600"
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@inventarios.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin12345!}
     depends_on:
-      mysql-analitica:
-        condition: service_healthy
-    environment:
-      DB_HOST: mysql-analitica
-      DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: clave
-      DB_NAME: bd_analitica
-      token: mi-token-super-secreto
-    ports:
-      - "5002:5000"
-    networks:
-      - red-microservicios
-
-  mysql-productos:
-    image: mysql:8.0
-    container_name: mysql-productos
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: clave
-      MYSQL_DATABASE: bd_productos
-    volumes:
-      - ./ms-productos/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - vol_mysql_productos:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
+      usuarios-db: { condition: service_healthy }
+    healthcheck: &hc-py
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 5s
       timeout: 5s
-      retries: 10
-    networks:
-      - red-gateway
+      retries: 20
+      start_period: 10s
 
+  usuarios-db:
+    <<: *db
+    container_name: usuarios-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
+      MYSQL_DATABASE: usuarios
+      MYSQL_USER: usuarios
+      MYSQL_PASSWORD: usuarios
+    volumes:
+      - usuarios-data:/var/lib/mysql
+    healthcheck: &hc-db
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # ------------------------------------------------------------ COMPRAS
+  compras:
+    <<: *svc
+    build: ./ms-compras
+    container_name: compras
+    environment:
+      DATABASE_URL: mysql+pymysql://compras:compras@compras-db:3306/compras?charset=utf8mb4
+      PROVEEDORES_URL: http://proveedores:8000
+      PRODUCTOS_URL: http://productos:8000
+      INVENTARIOS_URL: http://inventarios:8000
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-mi-token-super-secreto}
+    depends_on:
+      compras-db: { condition: service_healthy }
+    healthcheck: *hc-py
+
+  compras-db:
+    <<: *db
+    container_name: compras-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
+      MYSQL_DATABASE: compras
+      MYSQL_USER: compras
+      MYSQL_PASSWORD: compras
+    volumes:
+      - compras-data:/var/lib/mysql
+    healthcheck: *hc-db
+
+  # ------------------------------------------------------------ PRODUCTOS
   productos:
+    <<: *svc
     build: ./ms-productos
     container_name: productos
-    restart: always
-    depends_on:
-      mysql-productos:
-        condition: service_healthy
     environment:
-      DB_HOST: mysql-productos
-      DB_PORT: 3306
+      <<: *env-comun
+      DB_HOST: productos-db
+      DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: clave
+      DB_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
       DB_NAME: bd_productos
-      token: ${SERVICE_TOKEN:-mi-token-super-secreto}
-    ports:
-      - "5003:8000"
-    networks:
-      - red-gateway
+    depends_on:
+      productos-db: { condition: service_healthy }
+    healthcheck: *hc-py
 
-  mysql-proveedores:
-    image: mysql:8.0
-    container_name: mysql-proveedores
-    restart: always
+  productos-db:
+    <<: *db
+    container_name: productos-db
     environment:
-      MYSQL_ROOT_PASSWORD: clave
-      MYSQL_DATABASE: bd_proveedores
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
     volumes:
-      - ./ms-proveedores/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - vol_mysql_proveedores:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - red-gateway
+      - ./ms-productos/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - productos-data:/var/lib/mysql
+    healthcheck: *hc-db
 
+  # ------------------------------------------------------------ PROVEEDORES
   proveedores:
+    <<: *svc
     build: ./ms-proveedores
     container_name: proveedores
-    restart: always
-    depends_on:
-      mysql-proveedores:
-        condition: service_healthy
     environment:
-      DB_HOST: mysql-proveedores
-      DB_PORT: 3306
+      <<: *env-comun
+      DB_HOST: proveedores-db
+      DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: clave
+      DB_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
       DB_NAME: bd_proveedores
-      token: ${SERVICE_TOKEN:-mi-token-super-secreto}
-    ports:
-      - "5004:8000"
-    networks:
-      - red-gateway
+    depends_on:
+      proveedores-db: { condition: service_healthy }
+    healthcheck: *hc-py
 
-  mysql-logistica:
-    image: mysql:8.0
-    container_name: mysql-logistica
-    restart: always
+  proveedores-db:
+    <<: *db
+    container_name: proveedores-db
     environment:
-      MYSQL_ROOT_PASSWORD: clave
-      MYSQL_DATABASE: bd_logistica
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
     volumes:
-      - ./ms-logistica/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - vol_mysql_logistica:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pclave"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - red-gateway
+      - ./ms-proveedores/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - proveedores-data:/var/lib/mysql
+    healthcheck: *hc-db
 
+  # ------------------------------------------------------------ INVENTARIOS
+  inventarios:
+    <<: *svc
+    build: ./ms-inventarios
+    container_name: inventarios
+    environment:
+      <<: *env-comun
+      DB_HOST: inventarios-db
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
+      DB_NAME: bd_inventarios
+      ANALITICA_URL: http://analitica:8000
+      PRODUCTOS_URL: http://productos:8000
+      VALIDAR_PRODUCTO: "true"      # valida contra Productos que el producto exista
+    depends_on:
+      inventarios-db: { condition: service_healthy }
+    healthcheck: *hc-py
+
+  inventarios-db:
+    <<: *db
+    container_name: inventarios-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
+    volumes:
+      - ./ms-inventarios/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - inventarios-data:/var/lib/mysql
+    healthcheck: *hc-db
+
+  # ------------------------------------------------------------ LOGÍSTICA
   logistica:
+    <<: *svc
     build: ./ms-logistica
     container_name: logistica
-    restart: always
-    depends_on:
-      mysql-logistica:
-        condition: service_healthy
     environment:
-      DB_HOST: mysql-logistica
-      DB_PORT: 3306
+      <<: *env-comun
+      DB_HOST: logistica-db
+      DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: clave
+      DB_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
       DB_NAME: bd_logistica
-      token: ${SERVICE_TOKEN:-mi-token-super-secreto}
-      # Para la integracion con Inventarios real: cambiar a http.
-      # Mientras tanto, modo simulado para probar sin depender del otro servicio.
-      INVENTARIOS_MODE: stub
-      INVENTARIOS_URL: http://inventarios:5000
-    ports:
-      - "5005:8000"
-    networks:
-      - red-gateway
+      INVENTARIOS_MODE: http         # integración real con Inventarios (antes: stub)
+      INVENTARIOS_URL: http://inventarios:8000
+    depends_on:
+      logistica-db: { condition: service_healthy }
+    healthcheck: *hc-py
+
+  logistica-db:
+    <<: *db
+    container_name: logistica-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
+    volumes:
+      - ./ms-logistica/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - logistica-data:/var/lib/mysql
+    healthcheck: *hc-db
+
+  # ------------------------------------------------------------ ANALÍTICA
+  analitica:
+    <<: *svc
+    build: ./ms-analitica
+    container_name: analitica
+    environment:
+      <<: *env-comun
+      DB_HOST: analitica-db
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
+      DB_NAME: bd_analitica
+    depends_on:
+      analitica-db: { condition: service_healthy }
+    healthcheck: *hc-py
+
+  analitica-db:
+    <<: *db
+    container_name: analitica-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
+    volumes:
+      - ./ms-analitica/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - analitica-data:/var/lib/mysql
+    healthcheck: *hc-db
 
 volumes:
-  vol_mysql_inventarios:
-  vol_mysql_analitica:
-  vol_mysql_productos:
-  vol_mysql_proveedores:
-  vol_mysql_logistica:
+  usuarios-data:
+  compras-data:
+  productos-data:
+  proveedores-data:
+  inventarios-data:
+  logistica-data:
+  analitica-data:
 
 networks:
-  red-gateway:
-    external: true
-    name: red-gateway
-  red-microservicios:
+  red-interna:
     driver: bridge
