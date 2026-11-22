@@ -275,7 +275,165 @@ class FlujoCompra(UsuarioAutenticado):
         )
         self.client.get(f"/compras/ordenes/{orden_id}", name="GET /compras/ordenes/{id}")
 
-##participante 2 ahi para abajo
+
+# INTEGRANTE 2 · INVENTARIOS Y ANALÍTICA
+class InventariosLectura(UsuarioAutenticado):
+    @task(5)
+    def saldos(self):
+        self.client.get("/inventarios/saldos", name="GET /inventarios/saldos")
+
+    @task(2)
+    def alertas(self):
+        self.client.get("/inventarios/alertas/stock-minimo", name="GET /inventarios/alertas/stock-minimo")
+
+    @task(1)
+    def saldos_bodega(self):
+        self.client.get(f"/inventarios/saldos?bodega_id={DATOS['bodega_id']}", name="GET /inventarios/saldos?bodega_id=")
+
+
+class BodegasMovimientosLectura(UsuarioAutenticado):
+    @task(3)
+    def bodegas(self):
+        self.client.get("/inventarios/bodegas", name="GET /inventarios/bodegas")
+
+    @task(3)
+    def movimientos(self):
+        self.client.get("/inventarios/movimientos", name="GET /inventarios/movimientos")
+
+    @task(2)
+    def movimiento(self):
+        self.client.get(f"/inventarios/movimientos/{DATOS['movimiento_id']}", name="GET /inventarios/movimientos/{id}")
+
+
+class StockMinimo(UsuarioAutenticado):
+    """PUT del stock mínimo de un saldo y consulta de las alertas resultantes."""
+
+    @task(2)
+    def definir(self):
+        self.client.put(
+            f"/inventarios/saldos/{self._producto()}/{DATOS['bodega_id']}/stock-minimo",
+            json={"stock_minimo": random.randint(0, 50)},
+            name="PUT /inventarios/saldos/{p}/{b}/stock-minimo",
+        )
+
+    @task(1)
+    def alertas(self):
+        self.client.get("/inventarios/alertas/stock-minimo", name="GET /inventarios/alertas/stock-minimo")
+
+
+class MovimientosEscritura(UsuarioAutenticado):
+    """ENTRADAS concurrentes sobre los mismos saldos (bloqueos de fila en MySQL) + evento a Analítica."""
+
+    @task
+    def entrada(self):
+        self._movimiento({"tipo": "ENTRADA", "cantidad": random.randint(1, 5),
+                          "bodega_destino_id": DATOS["bodega_id"], "motivo": "Carga Locust"})
+
+
+class MovimientosSalida(UsuarioAutenticado):
+    @task
+    def salida(self):
+        self._movimiento({"tipo": "SALIDA", "cantidad": 1,
+                          "bodega_origen_id": DATOS["bodega_id"], "motivo": "Carga Locust"})
+
+
+class MovimientosTraslado(UsuarioAutenticado):
+    """TRASLADO bodega 1 -> bodega 2: actualiza dos saldos en una sola transacción."""
+
+    @task
+    def traslado(self):
+        self._movimiento({"tipo": "TRASLADO", "cantidad": 1, "bodega_origen_id": DATOS["bodega_id"],
+                          "bodega_destino_id": DATOS["bodega2_id"], "motivo": "Carga Locust"})
+
+
+class MovimientosMixtos(UsuarioAutenticado):
+    """Entradas, salidas, traslados y ajustes a la vez."""
+
+    wait_time = between(0.2, 0.8)
+
+    @task(5)
+    def entrada(self):
+        self._movimiento({"tipo": "ENTRADA", "cantidad": 2, "bodega_destino_id": DATOS["bodega_id"], "motivo": "Mixto"})
+
+    @task(3)
+    def salida(self):
+        self._movimiento({"tipo": "SALIDA", "cantidad": 1, "bodega_origen_id": DATOS["bodega_id"], "motivo": "Mixto"})
+
+    @task(2)
+    def traslado(self):
+        self._movimiento({"tipo": "TRASLADO", "cantidad": 1, "bodega_origen_id": DATOS["bodega_id"],
+                          "bodega_destino_id": DATOS["bodega2_id"], "motivo": "Mixto"})
+
+    @task(1)
+    def ajuste(self):
+        self._movimiento({"tipo": "AJUSTE", "cantidad": 1, "bodega_destino_id": DATOS["bodega_id"], "motivo": "Mixto"})
+
+
+class AnaliticaLectura(UsuarioAutenticado):
+    @task(3)
+    def indicadores(self):
+        self.client.get("/analitica/indicadores", name="GET /analitica/indicadores")
+
+    @task(1)
+    def indicador(self):
+        self.client.get("/analitica/indicadores/ROTACION_INVENTARIO", name="GET /analitica/indicadores/{n}")
+
+
+class AnaliticaReportes(UsuarioAutenticado):
+    """Agrega sobre la tabla de eventos: se vuelve más lenta a medida que crece."""
+
+    @task(3)
+    def json(self):
+        self.client.get("/analitica/reportes/inventario?formato=json", name="GET /analitica/reportes/inventario (json)")
+
+    @task(1)
+    def csv(self):
+        self.client.get("/analitica/reportes/inventario?formato=csv", name="GET /analitica/reportes/inventario (csv)")
+
+
+class AnaliticaEventos(UsuarioAutenticado):
+    """POST /analitica/eventos: cada evento inserta una fila y actualiza el MISMO indicador (contención de fila)."""
+
+    @task
+    def evento(self):
+        self.client.post(
+            "/analitica/eventos",
+            json={"evento_id": _unico("loc"), "tipo_evento": "movimiento.registrado",
+                  "datos": {"producto_id": self._producto(), "cantidad": 1, "tipo": "ENTRADA",
+                            "bodega_destino_id": DATOS["bodega_id"]}},
+            name="POST /analitica/eventos",
+        )
+
+
+class InventariosAnaliticaMixto(UsuarioAutenticado):
+    """Estrés: consultas de Inventarios y Analítica (lectura) más algunos eventos y movimientos."""
+
+    wait_time = between(0.2, 0.8)
+
+    @task(5)
+    def lectura(self):
+        ruta, nombre = random.choice([
+            ("/inventarios/saldos", "GET /inventarios/saldos"),
+            ("/inventarios/movimientos", "GET /inventarios/movimientos"),
+            ("/inventarios/alertas/stock-minimo", "GET /inventarios/alertas/stock-minimo"),
+            ("/analitica/indicadores", "GET /analitica/indicadores"),
+            ("/analitica/reportes/inventario?formato=json", "GET /analitica/reportes/inventario (json)"),
+        ])
+        self.client.get(ruta, name=nombre)
+
+    @task(2)
+    def evento(self):
+        self.client.post(
+            "/analitica/eventos",
+            json={"evento_id": _unico("loc"), "tipo_evento": "movimiento.registrado",
+                  "datos": {"producto_id": self._producto(), "cantidad": 1, "tipo": "ENTRADA",
+                            "bodega_destino_id": DATOS["bodega_id"]}},
+            name="POST /analitica/eventos",
+        )
+
+    @task(1)
+    def entrada(self):
+        self._movimiento({"tipo": "ENTRADA", "cantidad": 1, "bodega_destino_id": DATOS["bodega_id"], "motivo": "Estrés"})
 
 # ============================================================================
 # INTEGRANTE 3 · PRODUCTOS, PROVEEDORES Y LOGÍSTICA
