@@ -1,0 +1,101 @@
+# Pruebas de rendimiento (Locust) · 45 pruebas, 15 por integrante
+
+Todas las peticiones entran por el **API Gateway** (`http://localhost:8080`), el único punto de entrada del sistema.
+
+## Cómo ejecutarlas
+```bash
+# 1) Levantar el sistema (desde la carpeta de la implementación)
+docker compose up --build
+
+# 2) En otra terminal, desde esta carpeta
+pip install -r requirements.txt
+python ejecutar_pruebas.py --lista                  # ver las 45 pruebas
+python ejecutar_pruebas.py --integrante 1 --rapido  # las 15 del integrante 1, 30 s cada una (comprobar que funcionan)
+python ejecutar_pruebas.py --integrante 1           # las 15 completas del integrante 1 (~40 min)
+python ejecutar_pruebas.py --solo P02 P10           # solo algunas
+python ejecutar_pruebas.py                          # las 45 (~2 h)
+python ejecutar_pruebas.py --integrante 1 --etiqueta antes   # guarda en resultados/antes/ (luego "despues")
+```
+Resultados en `resultados/<etiqueta>/`: `Pxx.html` (gráficas), `Pxx_stats.csv`, `resumen.md` y `resumen.csv`.
+También se puede abrir la interfaz web de Locust: `locust -f locustfile.py --host http://localhost:8080`.
+
+## Reparto
+Cada integrante tiene 15 pruebas con endpoints **distintos** a los de los otros dos (sin repetirse), con carga normal,
+carga pico y estrés. El reparto por servicios es una propuesta: si en tu equipo los servicios se dividieron de otra forma,
+cambia el campo `integrante` de cada fila en `PRUEBAS` (`ejecutar_pruebas.py`) y los escenarios en `locustfile.py`.
+
+### Integrante 1 · Gateway, Usuarios y Compras (P01–P15)
+
+| ID | Escenario | Tipo | Usuarios | Duración |
+|---|---|---|---:|---:|
+| P01 | Gateway: salud, rechazo sin token y ruta inexistente | Carga normal | 30 | 2 min |
+| P02 | Inicio de sesión (Usuarios) | Carga normal | 10 | 2 min |
+| P03 | Validación de sesión (/auth/validar) | Carga normal | 20 | 2 min |
+| P04 | Consulta de usuarios, roles y permisos | Carga normal | 20 | 2 min |
+| P05 | Consulta de órdenes de compra | Carga normal | 20 | 2 min |
+| P06 | Creación de órdenes de compra | Carga normal | 20 | 2 min |
+| P07 | Flujo de compra extremo a extremo | Carga normal | 20 | 3 min |
+| P08 | Creación de usuarios (bcrypt + escritura) | Carga normal | 10 | 2 min |
+| P09 | Gateway con token: lecturas a 4 servicios | Carga pico | 150 | 3 min |
+| P10 | Inicio de sesión con carga pico | Carga pico | 50 | 2 min |
+| P11 | Consulta de órdenes con carga pico | Carga pico | 100 | 3 min |
+| P12 | Crear y cancelar órdenes con carga pico | Carga pico | 60 | 3 min |
+| P13 | Flujo de compra con carga pico | Carga pico | 50 | 3 min |
+| P14 | Estrés de inicio de sesión | Estrés | 200 | 3 min |
+| P15 | Estrés del flujo de compra | Estrés | 100 | 4 min |
+
+### Integrante 2 · Inventarios y Analítica (P16–P30)
+
+| ID | Escenario | Tipo | Usuarios | Duración |
+|---|---|---|---:|---:|
+| P16 | Consulta de saldos y alertas | Carga normal | 20 | 2 min |
+| P17 | Consulta de bodegas y movimientos | Carga normal | 20 | 2 min |
+| P18 | Definir stock mínimo y consultar alertas | Carga normal | 20 | 2 min |
+| P19 | Movimientos de ENTRADA | Carga normal | 20 | 2 min |
+| P20 | Movimientos de SALIDA | Carga normal | 20 | 2 min |
+| P21 | Traslados entre bodegas | Carga normal | 20 | 2 min |
+| P22 | Consulta de indicadores (Analítica) | Carga normal | 20 | 2 min |
+| P23 | Reportes de inventario JSON y CSV | Carga normal | 10 | 2 min |
+| P24 | Recepción de eventos (Analítica) | Carga normal | 30 | 2 min |
+| P25 | Consulta de saldos con carga pico | Carga pico | 100 | 3 min |
+| P26 | Movimientos mixtos con carga pico | Carga pico | 80 | 3 min |
+| P27 | Recepción de eventos con carga pico | Carga pico | 150 | 3 min |
+| P28 | Reportes de inventario con carga pico | Carga pico | 60 | 3 min |
+| P29 | Estrés de movimientos concurrentes | Estrés | 200 | 4 min |
+| P30 | Estrés de lectura Inventarios + Analítica | Estrés | 300 | 4 min |
+
+### Integrante 3 · Productos, Proveedores y Logística (P31–P45)
+
+| ID | Escenario | Tipo | Usuarios | Duración |
+|---|---|---|---:|---:|
+| P31 | Listado de productos, categorías y unidades | Carga normal | 20 | 2 min |
+| P32 | Detalle y búsqueda de productos | Carga normal | 20 | 2 min |
+| P33 | Creación de productos | Carga normal | 20 | 2 min |
+| P34 | Actualización de productos | Carga normal | 20 | 2 min |
+| P35 | Consulta de proveedores | Carga normal | 20 | 2 min |
+| P36 | Crear, actualizar y desactivar proveedores | Carga normal | 20 | 2 min |
+| P37 | Consulta de clientes, paquetes y envíos | Carga normal | 20 | 2 min |
+| P38 | Creación de envíos | Carga normal | 30 | 2 min |
+| P39 | Ciclo de vida completo de un envío | Carga normal | 20 | 3 min |
+| P40 | Listado de productos con carga pico | Carga pico | 100 | 3 min |
+| P41 | Consulta de proveedores con carga pico | Carga pico | 100 | 3 min |
+| P42 | Creación de envíos con carga pico | Carga pico | 80 | 3 min |
+| P43 | Envíos con insumos (Logística → Inventarios) | Carga pico | 50 | 3 min |
+| P44 | Estrés de creación de productos | Estrés | 150 | 3 min |
+| P45 | Estrés mixto: lectura 80 % + escritura 20 % | Estrés | 300 | 5 min |
+
+## Métricas y criterio
+Por prueba: peticiones, % de fallos, throughput (RPS), mediana, p95, p99 y máximo de tiempo de respuesta.
+Criterio de aceptación (RNF06): **p95 < 2000 ms y fallos ≤ 1 %**. Se puede cambiar en `ejecutar_pruebas.py`
+(`P95_MAX_MS`, `FALLOS_MAX_PCT`).
+
+## Qué hace la preparación
+Antes de cada prueba, `locustfile.py` inicia sesión con el admin, crea (o reutiliza) las bodegas `LOCUST-01` y `LOCUST-02`,
+toma los productos / proveedor / cliente sembrados y carga stock inicial. Si algo de eso falla, la prueba se detiene
+con un mensaje claro (suele significar que el sistema no está levantado).
+Las pruebas de escritura crean datos con identificadores únicos (SKU, NIT, correos `loc-...@example.com`); tras varias
+ejecuciones la base crece. Para volver a empezar de cero: `docker compose down -v`.
+
+## Para la comparación antes / después (Entrega 4)
+Los workers y los hilos de gunicorn se cambian en el `.env` (`GUNICORN_WORKERS`, `GUNICORN_THREADS`):
+ejecuta con `--etiqueta antes`, cambia el valor, reconstruye (`docker compose up --build`) y ejecuta con `--etiqueta despues`.
