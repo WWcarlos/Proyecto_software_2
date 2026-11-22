@@ -8,7 +8,7 @@ from .errores import ErrorApi
 
 PROVEEDORES_URL = os.getenv("PROVEEDORES_URL", "http://proveedores:8000")
 PRODUCTOS_URL = os.getenv("PRODUCTOS_URL", "http://productos:8000")
-INVENTARIOS_URL = os.getenv("INVENTARIOS_URL", "http://inventarios:5000")
+INVENTARIOS_URL = os.getenv("INVENTARIOS_URL", "http://inventarios:8000")
 
 _http = httpx.Client(timeout=httpx.Timeout(float(os.getenv("HTTP_TIMEOUT_SEGUNDOS", "10"))))
 

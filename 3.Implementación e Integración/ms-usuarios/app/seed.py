@@ -46,7 +46,7 @@ def sembrar(db: Session) -> None:
         roles[nombre] = rol
     db.flush()
 
-    email = os.getenv("ADMIN_EMAIL", "admin@inventarios.local").lower()
+    email = os.getenv("ADMIN_EMAIL", "admin@inventarios.com").lower()
     password = os.getenv("ADMIN_PASSWORD")
     if password and db.scalar(select(Usuario).where(Usuario.email == email)) is None:
         db.add(

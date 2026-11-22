@@ -12,16 +12,16 @@ load_dotenv()
 
 app = Flask(__name__)
 
-DB_HOST = os.getenv("DB_HOST", "mysql-inventarios")
+DB_HOST = os.getenv("DB_HOST", "inventarios-db")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "clave")
 DB_NAME = os.getenv("DB_NAME", "bd_inventarios")
 API_TOKEN = os.getenv("token", "mi-token-super-secreto")
 
-ANALITICA_URL = os.getenv("ANALITICA_URL", "http://ms-analitica:5000")
+ANALITICA_URL = os.getenv("ANALITICA_URL", "http://analitica:8000")
 VALIDAR_PRODUCTO = os.getenv("VALIDAR_PRODUCTO", "false").lower() == "true"
-PRODUCTOS_URL = os.getenv("PRODUCTOS_URL", "http://ms-productos:5000")
+PRODUCTOS_URL = os.getenv("PRODUCTOS_URL", "http://productos:8000")
 
 
 def get_db():
@@ -172,7 +172,7 @@ def swagger_ui():
 <body>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>SwaggerUIBundle({ url: '/openapi.yaml', dom_id: '#swagger-ui' });</script>
+  <script>SwaggerUIBundle({ url: 'openapi.yaml', dom_id: '#swagger-ui' });</script>
 </body>
 </html>""", 200, {"Content-Type": "text/html"}
 
@@ -547,4 +547,4 @@ def registrar_movimiento():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=False)
