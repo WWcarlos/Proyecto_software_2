@@ -276,3 +276,207 @@ class FlujoCompra(UsuarioAutenticado):
         self.client.get(f"/compras/ordenes/{orden_id}", name="GET /compras/ordenes/{id}")
 
 ##participante 2 ahi para abajo
+
+# ============================================================================
+# INTEGRANTE 3 · PRODUCTOS, PROVEEDORES Y LOGÍSTICA
+# ============================================================================
+class ProductosLectura(UsuarioAutenticado):
+    @task(5)
+    def listar(self):
+        self.client.get("/productos/?page=1&size=20", name="GET /productos/")
+
+    @task(1)
+    def categorias(self):
+        self.client.get("/productos/categorias", name="GET /productos/categorias")
+
+    @task(1)
+    def unidades(self):
+        self.client.get("/productos/unidades-medida", name="GET /productos/unidades-medida")
+
+
+class ProductosBusqueda(UsuarioAutenticado):
+    @task(3)
+    def detalle(self):
+        self.client.get(f"/productos/{self._producto()}", name="GET /productos/{id}")
+
+    @task(2)
+    def buscar(self):
+        self.client.get("/productos/?q=caja", name="GET /productos/?q=")
+
+    @task(1)
+    def por_categoria(self):
+        self.client.get(f"/productos/?categoria_id={DATOS['categoria_id']}", name="GET /productos/?categoria_id=")
+
+
+class ProductosEscritura(UsuarioAutenticado):
+    """POST /productos/ con SKU único."""
+
+    @task
+    def crear(self):
+        self.client.post(
+            "/productos/",
+            json={"sku": _unico("LOC"), "nombre": "Producto de prueba", "descripcion": "Creado por Locust",
+                  "categoria_id": DATOS["categoria_id"], "unidad_medida_id": DATOS["unidad_id"]},
+            name="POST /productos/",
+        )
+
+
+class ProductosActualizar(UsuarioAutenticado):
+    """PUT /productos/{id}: crea su propio producto (no toca los sembrados) y lo actualiza."""
+
+    def on_start(self):
+        super().on_start()
+        r = self.client.post(
+            "/productos/",
+            json={"sku": _unico("UPD"), "nombre": "Producto a actualizar", "categoria_id": DATOS["categoria_id"],
+                  "unidad_medida_id": DATOS["unidad_id"]},
+            name="POST /productos/ (preparación)",
+        )
+        self.mi_producto = r.json()["id"] if r.status_code == 201 else None
+
+    @task
+    def actualizar(self):
+        if self.mi_producto is None:
+            return
+        self.client.put(
+            f"/productos/{self.mi_producto}",
+            json={"nombre": f"Producto actualizado {random.randint(1, 9999)}", "descripcion": "Actualizado por Locust",
+                  "categoria_id": DATOS["categoria_id"], "unidad_medida_id": DATOS["unidad_id"]},
+            name="PUT /productos/{id}",
+        )
+
+
+class ProveedoresLectura(UsuarioAutenticado):
+    @task(3)
+    def listar(self):
+        self.client.get("/proveedores/", name="GET /proveedores/")
+
+    @task(2)
+    def detalle(self):
+        self.client.get(f"/proveedores/{DATOS['proveedor_id']}", name="GET /proveedores/{id}")
+
+
+class ProveedoresEscritura(UsuarioAutenticado):
+    """Crea un proveedor propio (NIT único) y lo actualiza y desactiva; no toca los sembrados."""
+
+    @task
+    def ciclo(self):
+        nit = f"{random.randint(100000000, 999999999)}-{random.randint(0, 9)}"
+        r = self.client.post("/proveedores/", json={"nit": nit, "razon_social": "Proveedor de prueba",
+                                                    "plazo_entrega_dias": 3}, name="POST /proveedores/")
+        if r.status_code != 201:
+            return
+        pid = r.json()["id"]
+        self.client.put(f"/proveedores/{pid}", json={"razon_social": "Proveedor actualizado", "contacto_nombre": "Locust",
+                                                      "plazo_entrega_dias": 5}, name="PUT /proveedores/{id}")
+        self.client.patch(f"/proveedores/{pid}/estado", json={"activo": False}, name="PATCH /proveedores/{id}/estado")
+
+
+class LogisticaLectura(UsuarioAutenticado):
+    @task(2)
+    def clientes(self):
+        self.client.get("/logistica/clientes", name="GET /logistica/clientes")
+
+    @task(2)
+    def paquetes(self):
+        self.client.get("/logistica/paquetes", name="GET /logistica/paquetes")
+
+    @task(3)
+    def envios(self):
+        self.client.get("/logistica/envios", name="GET /logistica/envios")
+
+
+def _crear_envio(cliente):
+    """Crea un paquete y un envío con él. Devuelve el id del envío (o None si algo falló)."""
+    paquete = cliente.post(
+        "/logistica/paquetes",
+        json={"cliente_id": DATOS["cliente_id"], "codigo_barras": _unico("PKG"), "peso_kg": 1.5,
+              "descripcion": "Paquete Locust"},
+        name="POST /logistica/paquetes",
+    )
+    if paquete.status_code != 201:
+        return None
+    envio = cliente.post(
+        "/logistica/envios",
+        json={"cliente_id": DATOS["cliente_id"], "bodega_origen_id": DATOS["bodega_id"],
+              "destino": "Bogotá", "paquetes": [paquete.json()["id"]]},
+        name="POST /logistica/envios",
+    )
+    return envio.json()["id"] if envio.status_code == 201 else None
+
+
+class EnviosEscritura(UsuarioAutenticado):
+    """Crear paquete -> crear envío -> primer cambio de estado. Ejercita la guía única bajo concurrencia."""
+
+    @task
+    def flujo_envio(self):
+        envio_id = _crear_envio(self.client)
+        if envio_id:
+            self.client.post(f"/logistica/envios/{envio_id}/estado",
+                             json={"estado": "EN_PREPARACION", "observacion": "Locust"},
+                             name="POST /logistica/envios/{id}/estado")
+
+
+class EnviosCicloVida(UsuarioAutenticado):
+    """Recorre toda la máquina de estados de un envío y lo consulta al final."""
+
+    wait_time = between(1, 2)
+
+    @task
+    def ciclo(self):
+        envio_id = _crear_envio(self.client)
+        if not envio_id:
+            return
+        for estado in ("EN_PREPARACION", "DESPACHADO", "EN_RUTA", "ENTREGADO"):
+            r = self.client.post(f"/logistica/envios/{envio_id}/estado", json={"estado": estado},
+                                 name="POST /logistica/envios/{id}/estado")
+            if r.status_code != 200:
+                return
+        self.client.get(f"/logistica/envios/{envio_id}", name="GET /logistica/envios/{id}")
+
+
+class EnviosInsumos(UsuarioAutenticado):
+    """Logística -> Inventarios: registrar insumos de un envío descuenta stock (SALIDA) vía REST."""
+
+    wait_time = between(1, 2)
+
+    @task
+    def con_insumos(self):
+        envio_id = _crear_envio(self.client)
+        if not envio_id:
+            return
+        self.client.post(
+            f"/logistica/envios/{envio_id}/insumos",
+            json={"insumos": [{"producto_id": self._producto(), "bodega_id": DATOS["bodega_id"], "cantidad": 1}]},
+            name="POST /logistica/envios/{id}/insumos",
+        )
+
+
+class EstresMixto(UsuarioAutenticado):
+    """Mezcla lectura (80 %) y escritura (20 %) sobre 6 servicios para buscar el punto de quiebre."""
+
+    wait_time = between(0.2, 0.8)
+
+    @task(8)
+    def lectura(self):
+        ruta, nombre = random.choice([
+            ("/productos/?page=1&size=20", "GET /productos/"),
+            ("/proveedores/", "GET /proveedores/"),
+            ("/logistica/envios", "GET /logistica/envios"),
+            ("/inventarios/saldos", "GET /inventarios/saldos"),
+            ("/compras/ordenes", "GET /compras/ordenes"),
+        ])
+        self.client.get(ruta, name=nombre)
+
+    @task(1)
+    def crear_producto(self):
+        self.client.post(
+            "/productos/",
+            json={"sku": _unico("EST"), "nombre": "Producto estrés", "categoria_id": DATOS["categoria_id"],
+                  "unidad_medida_id": DATOS["unidad_id"]},
+            name="POST /productos/",
+        )
+
+    @task(1)
+    def crear_envio(self):
+        _crear_envio(self.client)
