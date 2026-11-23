@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,POST /analitica/eventos,HTTPError('502 Server Error: BAD GATEWAY for url: POST /analitica/eventos'),1,2026-11-23T02:04:11Z,2026-11-23T02:04:11Z

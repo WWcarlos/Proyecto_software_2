@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,POST /inventarios/movimientos (SALIDA),HTTPError('502 Server Error: BAD GATEWAY for url: POST /inventarios/movimientos (SALIDA)'),1,2026-11-23T01:48:58Z,2026-11-23T01:48:58Z
