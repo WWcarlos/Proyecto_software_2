@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,POST /compras/ordenes,"ConnectionResetError(104, 'Connection reset by peer')",1,2026-11-23T03:31:14Z,2026-11-23T03:31:14Z
