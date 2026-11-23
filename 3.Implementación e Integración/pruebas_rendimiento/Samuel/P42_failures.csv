@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,POST /logistica/envios,HTTPError('502 Server Error: BAD GATEWAY for url: POST /logistica/envios'),1,2026-11-23T01:54:08Z,2026-11-23T01:54:08Z
