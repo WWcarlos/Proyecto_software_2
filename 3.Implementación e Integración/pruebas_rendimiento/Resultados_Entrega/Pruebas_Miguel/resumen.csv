@@ -1,0 +1,16 @@
+integrante,id,escenario,tipo,usuarios,peticiones,fallos,fallos_pct,rps,mediana_ms,p95_ms,p99_ms,max_ms,cumple
+2,P16,Consulta de saldos y alertas,Carga normal,20,2277,0,0.0,19.1,31,41,54,97,SÍ
+2,P17,Consulta de bodegas y movimientos,Carga normal,20,2273,0,0.0,19.1,36,84,120,171,SÍ
+2,P18,Definir stock mínimo y consultar alertas,Carga normal,20,2215,0,0.0,18.6,60,89,100,145,SÍ
+2,P19,Movimientos de ENTRADA,Carga normal,20,2118,0,0.0,17.8,110,140,170,191,SÍ
+2,P20,Movimientos de SALIDA,Carga normal,20,2086,1,0.05,17.5,110,150,190,316,SÍ
+2,P21,Traslados entre bodegas,Carga normal,20,2120,0,0.0,17.8,110,150,180,233,SÍ
+2,P22,Consulta de indicadores (Analítica),Carga normal,20,2286,0,0.0,19.2,32,42,57,70,SÍ
+2,P23,Reportes de inventario JSON y CSV,Carga normal,10,1069,0,0.0,9.0,85,110,120,159,SÍ
+2,P24,Recepción de eventos (Analítica),Carga normal,30,3350,0,0.0,28.1,41,64,84,152,SÍ
+2,P25,Consulta de saldos con carga pico,Carga pico,100,17263,0,0.0,96.3,25,47,68,143,SÍ
+2,P26,Movimientos mixtos con carga pico,Carga pico,80,6624,0,0.0,37.0,980,5400,11000,11958,NO
+2,P27,Recepción de eventos con carga pico,Carga pico,150,24560,1,0.0,137.1,72,150,200,304,SÍ
+2,P28,Reportes de inventario con carga pico,Carga pico,60,3910,0,0.0,21.8,1700,2300,2400,2602,NO
+2,P29,Estrés de movimientos concurrentes,Estrés,200,11654,0,0.0,48.7,3500,3900,4000,4256,NO
+2,P30,Estrés de lectura Inventarios + Analítica,Estrés,300,10747,0,0.0,44.9,6000,8000,9200,11116,NO
