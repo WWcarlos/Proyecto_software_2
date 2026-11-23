@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,GET /productos/,HTTPError('502 Server Error: BAD GATEWAY for url: GET /productos/'),1,2026-11-23T01:47:21Z,2026-11-23T01:47:21Z
