@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS MOVIMIENTO (
     bodega_origen_id INT NULL,
     bodega_destino_id INT NULL,
     motivo VARCHAR(255) NULL,
-    referencia_tipo ENUM('ORDEN_COMPRA', 'ENVIO', 'AJUSTE_MANUAL') NULL,
+    referencia_tipo ENUM('ORDEN_COMPRA', 'ENVIO', 'AJUSTE_MANUAL', 'DEVOLUCION_CLIENTE', 'DEVOLUCION_PROVEEDOR') NULL,
     referencia_id INT NULL,
     usuario_id INT NOT NULL,
     fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

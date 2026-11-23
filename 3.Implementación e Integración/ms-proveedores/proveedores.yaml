@@ -40,6 +40,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Proveedor' }
+        '403': { description: Falta el permiso proveedores.gestionar }
         '409': { description: NIT ya registrado }
         '422': { description: Datos inválidos }
 
@@ -71,7 +72,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Proveedor' }
+        '403': { description: Falta el permiso proveedores.gestionar }
         '404': { description: No existe }
+        '409': { description: NIT ya registrado por otro proveedor }
 
   /{id}/estado:
     parameters:
@@ -96,6 +99,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Proveedor' }
+        '403': { description: Falta el permiso proveedores.gestionar }
 
 components:
   securitySchemes:

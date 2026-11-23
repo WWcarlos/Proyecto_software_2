@@ -1,4 +1,6 @@
 .env
 __pycache__/
 *.pyc
-pruebas_rendimiento/resultados/
+# Resultados de Locust: no se suben, pero la carpeta sí (el contenedor de pruebas escribe ahí)
+pruebas_rendimiento/resultados/*
+!pruebas_rendimiento/resultados/.gitkeep

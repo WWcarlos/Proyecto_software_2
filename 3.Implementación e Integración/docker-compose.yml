@@ -27,7 +27,6 @@ services:
   gateway:
     <<: *svc
     build: ./ms-gateway
-    container_name: gateway
     ports:
       - "8080:8000"          # único puerto expuesto al exterior
     environment:
@@ -52,7 +51,6 @@ services:
   usuarios:
     <<: *svc
     build: ./ms-usuarios
-    container_name: usuarios
     environment:
       DATABASE_URL: mysql+pymysql://usuarios:usuarios@usuarios-db:3306/usuarios?charset=utf8mb4
       JWT_SECRET: ${JWT_SECRET:-cambiar-este-secreto-en-desarrollo-0123456789}
@@ -70,7 +68,6 @@ services:
 
   usuarios-db:
     <<: *db
-    container_name: usuarios-db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
       MYSQL_DATABASE: usuarios
@@ -88,12 +85,12 @@ services:
   compras:
     <<: *svc
     build: ./ms-compras
-    container_name: compras
     environment:
       DATABASE_URL: mysql+pymysql://compras:compras@compras-db:3306/compras?charset=utf8mb4
       PROVEEDORES_URL: http://proveedores:8000
       PRODUCTOS_URL: http://productos:8000
       INVENTARIOS_URL: http://inventarios:8000
+      ANALITICA_URL: http://analitica:8000      # publica el evento orden.recibida
       SERVICE_TOKEN: ${SERVICE_TOKEN:-mi-token-super-secreto}
     depends_on:
       compras-db: { condition: service_healthy }
@@ -101,7 +98,6 @@ services:
 
   compras-db:
     <<: *db
-    container_name: compras-db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
       MYSQL_DATABASE: compras
@@ -115,7 +111,6 @@ services:
   productos:
     <<: *svc
     build: ./ms-productos
-    container_name: productos
     environment:
       <<: *env-comun
       DB_HOST: productos-db
@@ -123,13 +118,13 @@ services:
       DB_USER: root
       DB_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
       DB_NAME: bd_productos
+      PROVEEDORES_URL: http://proveedores:8000   # valida los proveedores asociados a un producto
     depends_on:
       productos-db: { condition: service_healthy }
     healthcheck: *hc-py
 
   productos-db:
     <<: *db
-    container_name: productos-db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
     volumes:
@@ -141,7 +136,6 @@ services:
   proveedores:
     <<: *svc
     build: ./ms-proveedores
-    container_name: proveedores
     environment:
       <<: *env-comun
       DB_HOST: proveedores-db
@@ -155,7 +149,6 @@ services:
 
   proveedores-db:
     <<: *db
-    container_name: proveedores-db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
     volumes:
@@ -167,7 +160,6 @@ services:
   inventarios:
     <<: *svc
     build: ./ms-inventarios
-    container_name: inventarios
     environment:
       <<: *env-comun
       DB_HOST: inventarios-db
@@ -184,7 +176,6 @@ services:
 
   inventarios-db:
     <<: *db
-    container_name: inventarios-db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
     volumes:
@@ -196,7 +187,6 @@ services:
   logistica:
     <<: *svc
     build: ./ms-logistica
-    container_name: logistica
     environment:
       <<: *env-comun
       DB_HOST: logistica-db
@@ -206,13 +196,13 @@ services:
       DB_NAME: bd_logistica
       INVENTARIOS_MODE: http         # integración real con Inventarios (antes: stub)
       INVENTARIOS_URL: http://inventarios:8000
+      ANALITICA_URL: http://analitica:8000      # publica el evento envio.creado
     depends_on:
       logistica-db: { condition: service_healthy }
     healthcheck: *hc-py
 
   logistica-db:
     <<: *db
-    container_name: logistica-db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
     volumes:
@@ -224,7 +214,6 @@ services:
   analitica:
     <<: *svc
     build: ./ms-analitica
-    container_name: analitica
     environment:
       <<: *env-comun
       DB_HOST: analitica-db
@@ -232,19 +221,37 @@ services:
       DB_USER: root
       DB_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
       DB_NAME: bd_analitica
+      INVENTARIOS_URL: http://inventarios:8000   # saldos para existencias, valorización y dashboard
+      PRODUCTOS_URL: http://productos:8000       # precios y nombres de los productos
     depends_on:
       analitica-db: { condition: service_healthy }
     healthcheck: *hc-py
 
   analitica-db:
     <<: *db
-    container_name: analitica-db
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-clave}
     volumes:
       - ./ms-analitica/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - analitica-data:/var/lib/mysql
     healthcheck: *hc-db
+
+  # ------------------------------------------------------------ PRUEBAS DE RENDIMIENTO (Locust)
+  # No se levanta con "docker compose up": solo con el perfil "pruebas", por ejemplo
+  #   docker compose run --rm locust --integrante 1 --rapido
+  # Entra por el gateway igual que un cliente externo; los resultados quedan en pruebas_rendimiento/resultados/.
+  locust:
+    build: ./pruebas_rendimiento
+    profiles: [pruebas]
+    networks: [red-interna]
+    environment:
+      LOCUST_HOST: http://gateway:8000
+      LOCUST_EMAIL: ${ADMIN_EMAIL:-admin@inventarios.com}
+      LOCUST_PASSWORD: ${ADMIN_PASSWORD:-Admin12345!}
+    volumes:
+      - ./pruebas_rendimiento/resultados:/pruebas/resultados
+    depends_on:
+      gateway: { condition: service_started }
 
 volumes:
   usuarios-data:

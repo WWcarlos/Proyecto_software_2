@@ -80,7 +80,8 @@ def preparar_datos(environment, **_):
         DATOS["bodega2_id"] = _bodega(host, h, "LOCUST-02", "Bodega de pruebas Locust 2")
 
         # Productos, categoría y unidad existentes (datos sembrados por el servicio de productos)
-        productos = _lista(requests.get(f"{host}/productos/?size=10", headers=h, timeout=15).json())
+        # Solo productos activos: los dados de baja no deben usarse en las pruebas
+        productos = _lista(requests.get(f"{host}/productos/?activo=true&size=10", headers=h, timeout=15).json())
         DATOS["producto_ids"] = [p["id"] for p in productos]
         DATOS["categoria_id"] = productos[0]["categoria_id"]
         DATOS["unidad_id"] = productos[0]["unidad_medida_id"]
@@ -91,8 +92,9 @@ def preparar_datos(environment, **_):
         clientes = _lista(requests.get(f"{host}/logistica/clientes", headers=h, timeout=15).json())
         DATOS["cliente_id"] = clientes[0]["id"] if clientes else 1
 
-        # Stock inicial amplio en la bodega 1 para que salidas, traslados y recepciones no fallen por falta de existencias
-        for pid in DATOS["producto_ids"][:2]:
+        # Stock inicial amplio en la bodega 1 para que salidas, traslados y recepciones no fallen por falta de existencias.
+        # Se carga a TODOS los productos que usan las pruebas (_producto() elige cualquiera de ellos).
+        for pid in DATOS["producto_ids"]:
             r = requests.post(
                 f"{host}/inventarios/movimientos",
                 json={"tipo": "ENTRADA", "producto_id": pid, "cantidad": 1000000,

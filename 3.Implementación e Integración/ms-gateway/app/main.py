@@ -39,7 +39,8 @@ def error(status: int, codigo: str, mensaje: str):
 
 
 def es_publica(metodo: str, prefijo: str, ruta: str) -> bool:
-    if metodo == "POST" and prefijo == "usuarios" and ruta == "/auth/login":
+    # Rutas de Usuarios que se usan sin sesión: login y recuperación de contraseña.
+    if metodo == "POST" and prefijo == "usuarios" and ruta in ("/auth/login", "/auth/recuperar", "/auth/restablecer"):
         return True
     # Documentación de cada servicio
     return metodo == "GET" and ruta in ("/docs", "/openapi.json", "/openapi.yaml")

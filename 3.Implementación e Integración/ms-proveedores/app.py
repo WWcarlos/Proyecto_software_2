@@ -16,6 +16,10 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "clave")
 DB_NAME = os.getenv("DB_NAME", "bd_proveedores")
 API_TOKEN = os.getenv("token", "mi-token-super-secreto")
 
+# Campos que se pueden modificar con PUT (el estado no: tiene su propio PATCH).
+CAMPOS_EDITABLES = ("nit", "razon_social", "contacto_nombre", "email", "telefono", "direccion",
+                    "condiciones_pago", "plazo_entrega_dias")
+
 
 def get_db():
     return mysql.connector.connect(
@@ -29,6 +33,14 @@ def get_db():
 
 def error_response(codigo, mensaje, status_code, detalles=None):
     return jsonify({"codigo": codigo, "mensaje": mensaje, "detalles": detalles or []}), status_code
+
+
+def requiere_permiso(permiso):
+    """El Gateway reenvía los permisos del usuario en X-User-Permissions. Devuelve un error 403 o None."""
+    permisos = {p for p in request.headers.get("X-User-Permissions", "").split(",") if p}
+    if permiso not in permisos:
+        return error_response("SIN_PERMISO", f"Se requiere el permiso {permiso}", 403)
+    return None
 
 
 def serializar(f):
@@ -86,7 +98,7 @@ def swagger_ui():
 <body>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>SwaggerUIBundle({ url: '/openapi.yaml', dom_id: '#swagger-ui' });</script>
+  <script>SwaggerUIBundle({ url: 'openapi.yaml', dom_id: '#swagger-ui' });</script>
 </body>
 </html>""", 200, {"Content-Type": "text/html"}
 
@@ -120,6 +132,10 @@ def listar_proveedores():
 
 @app.post("/")
 def crear_proveedor():
+    sin_permiso = requiere_permiso("proveedores.gestionar")
+    if sin_permiso:
+        return sin_permiso
+
     data = request.get_json(silent=True) or {}
     nit = (data.get("nit") or "").strip()
     razon_social = (data.get("razon_social") or "").strip()
@@ -147,7 +163,8 @@ def crear_proveedor():
         cur.close()
         db.close()
 
-    return obtener_proveedor(nuevo_id)
+    respuesta, _ = obtener_proveedor(nuevo_id)
+    return respuesta, 201
 
 
 @app.get("/<int:proveedor_id>")
@@ -171,6 +188,10 @@ def obtener_proveedor(proveedor_id):
 
 @app.put("/<int:proveedor_id>")
 def actualizar_proveedor(proveedor_id):
+    sin_permiso = requiere_permiso("proveedores.gestionar")
+    if sin_permiso:
+        return sin_permiso
+
     data = request.get_json(silent=True) or {}
     db = get_db()
     cur = db.cursor(dictionary=True)
@@ -179,14 +200,18 @@ def actualizar_proveedor(proveedor_id):
         if not cur.fetchone():
             return error_response("NO_ENCONTRADO", "Proveedor no existe", 404)
 
-        cur.execute(
-            "UPDATE PROVEEDOR SET razon_social = %s, contacto_nombre = %s, email = %s, telefono = %s, "
-            "direccion = %s, condiciones_pago = %s, plazo_entrega_dias = %s WHERE id = %s",
-            (data.get("razon_social"), data.get("contacto_nombre"), data.get("email"),
-             data.get("telefono"), data.get("direccion"), data.get("condiciones_pago"),
-             data.get("plazo_entrega_dias"), proveedor_id),
-        )
-        db.commit()
+        # Solo se actualizan los campos que vienen en el cuerpo (actualización parcial).
+        for obligatorio in ("nit", "razon_social"):
+            if obligatorio in data and not str(data[obligatorio] or "").strip():
+                return error_response("VALIDACION_FALLIDA", f"{obligatorio} no puede estar vacío", 422)
+        cambios = {campo: data[campo] for campo in CAMPOS_EDITABLES if campo in data}
+        for campo in ("nit", "razon_social"):
+            if campo in cambios:
+                cambios[campo] = str(cambios[campo]).strip()
+        if cambios:
+            asignaciones = ", ".join(f"{campo} = %s" for campo in cambios)
+            cur.execute(f"UPDATE PROVEEDOR SET {asignaciones} WHERE id = %s", (*cambios.values(), proveedor_id))
+            db.commit()
         cur.execute(
             "SELECT id, nit, razon_social, contacto_nombre, email, telefono, direccion, "
             "condiciones_pago, plazo_entrega_dias, activo FROM PROVEEDOR WHERE id = %s",
@@ -195,6 +220,8 @@ def actualizar_proveedor(proveedor_id):
         return jsonify(serializar(cur.fetchone())), 200
     except MySQLError as e:
         db.rollback()
+        if e.errno == errorcode.ER_DUP_ENTRY:
+            return error_response("NIT_DUPLICADO", "NIT ya registrado", 409)
         return error_response("ERROR_BD", str(e), 500)
     finally:
         cur.close()
@@ -203,6 +230,10 @@ def actualizar_proveedor(proveedor_id):
 
 @app.patch("/<int:proveedor_id>/estado")
 def cambiar_estado(proveedor_id):
+    sin_permiso = requiere_permiso("proveedores.gestionar")
+    if sin_permiso:
+        return sin_permiso
+
     data = request.get_json(silent=True) or {}
     activo = data.get("activo")
     if not isinstance(activo, bool):
@@ -232,4 +263,4 @@ def cambiar_estado(proveedor_id):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=False)

@@ -1,9 +1,10 @@
 from collections import defaultdict
+import os
 from decimal import ROUND_HALF_UP, Decimal
 from typing import get_args
 from uuid import uuid4
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from sqlalchemy import select
 
 from . import clientes, models, schemas
@@ -53,6 +54,30 @@ def _error_consulta(campo: str, mensaje: str) -> ErrorApi:
 @app.get("/health")
 def health():
     return jsonify(estado="ok", servicio="compras")
+
+
+# ---------- documentación OpenAPI / Swagger ----------
+@app.get("/openapi.yaml")
+def openapi_spec():
+    # El contrato está en la carpeta del servicio, junto a app/ (igual que en los otros microservicios).
+    return send_from_directory(os.path.dirname(app.root_path), "compras.yaml", mimetype="text/yaml")
+
+
+@app.get("/docs")
+def swagger_ui():
+    # URL relativa: funciona tanto en /docs como detrás del gateway en /compras/docs
+    return """<!DOCTYPE html>
+<html>
+<head>
+  <title>API Compras - Swagger</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>SwaggerUIBundle({ url: 'openapi.yaml', dom_id: '#swagger-ui' });</script>
+</body>
+</html>""", 200, {"Content-Type": "text/html"}
 
 
 # ---------- órdenes ----------
@@ -233,6 +258,7 @@ def registrar_recepcion(orden_id: int):
         orden.estado = "RECIBIDA" if completa else "PARCIAL"
         Session.add(recepcion)
         Session.commit()
+        clientes.publicar_orden_recibida(orden, recepcion)
     else:
         Session.rollback()
 

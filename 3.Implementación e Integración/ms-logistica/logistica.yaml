@@ -38,6 +38,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Cliente' }
+        '403': { description: Falta el permiso logistica.gestionar }
         '409': { description: Documento ya registrado }
 
   /paquetes:
@@ -73,7 +74,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Paquete' }
+        '403': { description: Falta el permiso logistica.gestionar }
         '404': { description: Cliente no existe }
+        '409': { description: Ya existe un paquete con ese código de barras }
 
   /envios:
     get:
@@ -111,6 +114,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Envio' }
+        '403': { description: Falta el permiso logistica.gestionar }
         '404': { description: Cliente o paquete no existe }
         '422': { description: Datos inválidos }
 
@@ -156,6 +160,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Envio' }
+        '403': { description: Falta el permiso logistica.gestionar }
         '409': { description: Transición de estado no permitida }
 
   /envios/{id}/insumos:
@@ -195,13 +200,16 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/EnvioInsumo' }
+        '403': { description: Falta el permiso logistica.gestionar }
         '409':
-          description: STOCK_INSUFICIENTE en Inventarios
+          description: >
+            STOCK_INSUFICIENTE en Inventarios. Las líneas anteriores ya confirmadas quedan registradas;
+            detalles indica insumos_registrados e insumos_pendientes.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '502': { description: Inventarios no disponible }
+        '502': { description: Inventarios no disponible (detalles igual que en el 409) }
 
 components:
   securitySchemes:
@@ -256,6 +264,7 @@ components:
         bodega_origen_id: { type: integer }
         destino: { type: string }
         estado_actual: { type: string }
+        creado_por_usuario_id: { type: integer, description: "Usuario que creó el envío" }
         fecha_creacion: { type: string, format: date-time }
     EnvioNuevo:
       type: object

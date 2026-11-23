@@ -2,21 +2,40 @@
 
 Todas las peticiones entran por el **API Gateway** (`http://localhost:8080`), el único punto de entrada del sistema.
 
-## Cómo ejecutarlas
+## Cómo ejecutarlas (recomendado: con Docker, sin instalar nada)
+Locust corre en su propio contenedor (servicio `locust` del `docker-compose.yml`, perfil `pruebas`), dentro de la
+misma red que el sistema, y entra por el gateway igual que un cliente externo. Así todos usan la misma versión
+de Locust (la de `requirements.txt`). Todos los comandos se ejecutan **desde la carpeta de la implementación**
+(`3.Implementación e Integración/`):
 ```bash
-# 1) Levantar el sistema (desde la carpeta de la implementación)
-docker compose up --build
+# 1) Levantar el sistema y esperar a que todos los servicios estén sanos
+cp .env.example .env                 # solo la primera vez
+docker compose up -d --build --wait
 
-# 2) En otra terminal, desde esta carpeta
-pip install -r requirements.txt
-python ejecutar_pruebas.py --lista                  # ver las 45 pruebas
-python ejecutar_pruebas.py --integrante 1 --rapido  # las 15 del integrante 1, 30 s cada una (comprobar que funcionan)
-python ejecutar_pruebas.py --integrante 1           # las 15 completas del integrante 1 (~40 min)
-python ejecutar_pruebas.py --solo P02 P10           # solo algunas
-python ejecutar_pruebas.py                          # las 45 (~2 h)
-python ejecutar_pruebas.py --integrante 1 --etiqueta antes   # guarda en resultados/antes/ (luego "despues")
+# 2) Ejecutar las pruebas (los argumentos son los de ejecutar_pruebas.py)
+docker compose run --rm locust                                     # ver las 45 pruebas
+docker compose run --rm locust --integrante 1 --rapido             # las 15 del integrante 1, 30 s cada una (comprobar)
+docker compose run --rm locust --integrante 1                      # las 15 completas del integrante 1 (~40 min)
+docker compose run --rm locust --solo P02 P10                      # solo algunas
+docker compose run --rm locust --integrante 1 --etiqueta antes     # guarda en resultados/antes/ (luego "despues")
 ```
-Resultados en `resultados/<etiqueta>/`: `Pxx.html` (gráficas), `Pxx_stats.csv`, `resumen.md` y `resumen.csv`.
+Los resultados quedan en esta carpeta, en `resultados/<etiqueta>/`: `Pxx.html` (gráficas), `Pxx_stats.csv`,
+`resumen.md` y `resumen.csv`. La etiqueta por defecto es `integrante1`, `integrante2`, `integrante3` o `todas`.
+Los resultados no se suben a GitHub (están en el `.gitignore`); la carpeta `resultados/` sí, para que exista al clonar.
+
+**Importante:**
+- Si el sistema ya estaba levantado con una versión anterior y cambió algún `init.sql`, hay que recrear las bases de
+  datos antes de probar (**borra los datos locales**): `docker compose down -v && docker compose up -d --build --wait`.
+- Locust inicia sesión con `ADMIN_EMAIL` y `ADMIN_PASSWORD` del `.env`.
+- En Linux, el contenedor escribe los resultados con el usuario de uid 1000 (el usuario normal en la mayoría de
+  equipos). Si tu usuario tiene otro uid y aparece `Permission denied`, ejecuta `chmod a+w resultados`.
+
+### Alternativa: sin Docker, con Python en tu máquina
+```bash
+# desde esta carpeta, con el sistema ya levantado
+pip install -r requirements.txt
+python ejecutar_pruebas.py --integrante 1 --rapido     # mismos argumentos que arriba
+```
 También se puede abrir la interfaz web de Locust: `locust -f locustfile.py --host http://localhost:8080`.
 
 ## Reparto

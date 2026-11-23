@@ -1,5 +1,6 @@
 FROM python:3.12-slim
 
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
 COPY requirements.txt .
@@ -8,6 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY analitica.yaml .
 
-EXPOSE 5000
-
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
+# Todos los microservicios escuchan en el 8000 (el gateway los resuelve por nombre en la red).
+EXPOSE 8000
+CMD ["sh", "-c", "exec gunicorn -b 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-4} --timeout 60 app:app"]

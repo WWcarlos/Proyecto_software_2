@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS CLIENTE (
 CREATE TABLE IF NOT EXISTS PAQUETE (
     id INT AUTO_INCREMENT PRIMARY KEY,
     cliente_id INT NOT NULL,
-    codigo_barras VARCHAR(60) NOT NULL,
+    codigo_barras VARCHAR(60) NOT NULL UNIQUE,
     peso_kg DECIMAL(10,2) NULL,
     descripcion VARCHAR(300) NULL,
     estado VARCHAR(20) NOT NULL DEFAULT 'RECIBIDO',
@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS ENVIO (
     bodega_origen_id INT NOT NULL,
     destino VARCHAR(300) NOT NULL,
     estado_actual VARCHAR(20) NOT NULL DEFAULT 'CREADO',
+    creado_por_usuario_id INT NULL,
     fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_envio_cliente FOREIGN KEY (cliente_id) REFERENCES CLIENTE(id)
 ) ENGINE=InnoDB;
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS HISTORIAL_ESTADO (
     envio_id INT NOT NULL,
     estado VARCHAR(20) NOT NULL,
     observacion VARCHAR(300) NULL,
+    usuario_id INT NULL,
     fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_historial_envio FOREIGN KEY (envio_id) REFERENCES ENVIO(id)
 ) ENGINE=InnoDB;

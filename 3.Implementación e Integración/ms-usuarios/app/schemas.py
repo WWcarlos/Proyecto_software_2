@@ -68,3 +68,22 @@ class PermisoOut(BaseModel):
     id: int
     codigo: str
     descripcion: str
+
+
+class CambioPasswordIn(BaseModel):
+    password_actual: str
+    password_nueva: str = Field(min_length=10)
+
+
+class RecuperarIn(BaseModel):
+    email: EmailStr
+
+
+class RestablecerIn(BaseModel):
+    email: EmailStr
+    codigo: str = Field(min_length=6, max_length=6)
+    password_nueva: str = Field(min_length=10)
+
+
+class MensajeOut(BaseModel):
+    mensaje: str
