@@ -4,10 +4,7 @@ info:
   version: 1.0.0
   description: Reportes e indicadores derivados. Fuente de consulta, no fuente autorizada.
 servers:
-  - url: /
-    description: Acceso directo al contenedor
   - url: /analitica
-    description: A través del API Gateway
 security:
   - bearerAuth: []
 paths:
@@ -81,13 +78,146 @@ paths:
             text/csv:
               schema: { type: string }
 
+  /reportes/existencias:
+    get:
+      summary: Existencias actuales por producto y bodega (consulta los saldos de Inventarios)
+      parameters:
+        - name: bodega_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Existencias
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_filas: { type: integer }
+                  unidades_totales: { type: integer }
+                  datos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        producto_id: { type: integer }
+                        sku: { type: string }
+                        nombre: { type: string }
+                        bodega_id: { type: integer }
+                        cantidad_disponible: { type: integer }
+                        stock_minimo: { type: integer }
+                        bajo_minimo: { type: boolean }
+        '502': { $ref: '#/components/responses/ServicioNoDisponible' }
+
+  /reportes/valorizacion:
+    get:
+      summary: Valor del inventario (cantidad disponible x precio), total, por bodega y por producto
+      parameters:
+        - name: bodega_id
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Valorización
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valor_total: { type: number, example: 147000.0 }
+                  por_bodega:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        bodega_id: { type: integer }
+                        valor: { type: number }
+                  por_producto:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        producto_id: { type: integer }
+                        sku: { type: string }
+                        nombre: { type: string }
+                        precio: { type: number }
+                        cantidad: { type: integer }
+                        valor: { type: number }
+        '502': { $ref: '#/components/responses/ServicioNoDisponible' }
+
+  /reportes/rotacion:
+    get:
+      summary: Productos con mayor y menor rotación (unidades que salieron en el periodo)
+      parameters:
+        - name: desde
+          in: query
+          schema: { type: string, format: date-time }
+        - name: hasta
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limite
+          in: query
+          schema: { type: integer, default: 5, minimum: 1 }
+      responses:
+        '200':
+          description: Rotación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mayor_rotacion:
+                    type: array
+                    items: { $ref: '#/components/schemas/Rotacion' }
+                  menor_rotacion:
+                    type: array
+                    items: { $ref: '#/components/schemas/Rotacion' }
+        '502': { $ref: '#/components/responses/ServicioNoDisponible' }
+
+  /dashboard:
+    get:
+      summary: Indicadores clave del inventario (valor total, quiebres de stock, rotación, alertas)
+      responses:
+        '200':
+          description: Dashboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valor_total_inventario: { type: number }
+                  unidades_totales: { type: integer }
+                  productos_activos: { type: integer }
+                  quiebres_stock:
+                    type: array
+                    description: Ids de productos activos sin existencias en ninguna bodega
+                    items: { type: integer }
+                  saldos_bajo_minimo: { type: integer }
+                  mayor_rotacion:
+                    type: array
+                    items: { $ref: '#/components/schemas/Rotacion' }
+                  indicadores:
+                    type: array
+                    items: { $ref: '#/components/schemas/Indicador' }
+        '502': { $ref: '#/components/responses/ServicioNoDisponible' }
+
 components:
+  responses:
+    ServicioNoDisponible:
+      description: Inventarios o Productos no respondieron
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    Rotacion:
+      type: object
+      properties:
+        producto_id: { type: integer }
+        sku: { type: string }
+        nombre: { type: string }
+        unidades_salida: { type: integer }
     Indicador:
       type: object
       properties:

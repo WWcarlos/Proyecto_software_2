@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+import logging
+import os
+from datetime import datetime, timedelta, timezone
 
 import jwt
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -9,6 +11,12 @@ from . import models, schemas, security
 from .db import Base, Session, SessionLocal, engine, esperar_bd
 from .errores import ErrorApi, registrar_manejadores, salida, validar_cuerpo
 from .seed import sembrar
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+log = logging.getLogger("usuarios")
+
+# Minutos de validez del código de recuperación de contraseña.
+RECUPERACION_MINUTOS = int(os.getenv("RECUPERACION_MINUTOS", "15"))
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
@@ -57,6 +65,8 @@ def usuario_actual():
         usuario_id = int(claims["sub"])
     except (jwt.PyJWTError, ValueError):
         raise ErrorApi(401, "TOKEN_INVALIDO", "Token inválido o expirado")
+    if claims.get("jti") and Session.get(models.TokenRevocado, claims["jti"]) is not None:
+        raise ErrorApi(401, "TOKEN_REVOCADO", "La sesión fue cerrada")
     usuario = Session.get(models.Usuario, usuario_id)
     if usuario is None or not usuario.activo:
         raise ErrorApi(401, "TOKEN_INVALIDO", "Token inválido o expirado")
@@ -93,6 +103,30 @@ def health():
     return jsonify(estado="ok", servicio="usuarios")
 
 
+# ---------- documentación OpenAPI / Swagger ----------
+@app.get("/openapi.yaml")
+def openapi_spec():
+    # El contrato está en la carpeta del servicio, junto a app/ (igual que en los otros microservicios).
+    return send_from_directory(os.path.dirname(app.root_path), "usuarios.yaml", mimetype="text/yaml")
+
+
+@app.get("/docs")
+def swagger_ui():
+    # URL relativa: funciona tanto en /docs como detrás del gateway en /usuarios/docs
+    return """<!DOCTYPE html>
+<html>
+<head>
+  <title>API Usuarios - Swagger</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>SwaggerUIBundle({ url: 'openapi.yaml', dom_id: '#swagger-ui' });</script>
+</body>
+</html>""", 200, {"Content-Type": "text/html"}
+
+
 # ---------- autenticación ----------
 @app.post("/auth/login")
 def login():
@@ -124,6 +158,92 @@ def validar():
             expira_en=datetime.fromtimestamp(claims["exp"], tz=timezone.utc),
         )
     )
+
+
+@app.post("/auth/logout")
+def logout():
+    """Cerrar sesión: el token actual queda revocado (el Gateway lo rechaza desde ese momento)."""
+    usuario, claims = usuario_actual()
+    if claims.get("jti"):
+        Session.merge(
+            models.TokenRevocado(
+                jti=claims["jti"],
+                usuario_id=usuario.id,
+                expira_en=datetime.fromtimestamp(claims["exp"], tz=timezone.utc).replace(tzinfo=None),
+            )
+        )
+        Session.commit()
+    return salida(schemas.MensajeOut(mensaje="Sesión cerrada"))
+
+
+@app.put("/auth/password")
+def cambiar_password():
+    """Cambiar la contraseña del usuario autenticado (exige la contraseña actual)."""
+    usuario, _ = usuario_actual()
+    datos = validar_cuerpo(schemas.CambioPasswordIn)
+    if not security.verificar_password(datos.password_actual, usuario.password_hash):
+        raise ErrorApi(401, "CREDENCIALES_INVALIDAS", "La contraseña actual no es correcta")
+    usuario.password_hash = security.hash_password(datos.password_nueva)
+    Session.commit()
+    return salida(schemas.MensajeOut(mensaje="Contraseña actualizada"))
+
+
+MENSAJE_RECUPERACION = "Si el correo está registrado, se envió un código para restablecer la contraseña"
+
+
+@app.post("/auth/recuperar")
+def recuperar_password():
+    """Solicitar un código de recuperación. La respuesta es la misma exista o no el correo.
+
+    No hay servidor de correo: el envío se simula escribiendo el código en el log del servicio
+    (docker compose logs usuarios).
+    """
+    datos = validar_cuerpo(schemas.RecuperarIn)
+    usuario = Session.scalar(select(models.Usuario).where(models.Usuario.email == datos.email.lower()))
+    if usuario is not None and usuario.activo:
+        # Los códigos anteriores que no se usaron dejan de servir.
+        for anterior in Session.scalars(
+            select(models.RecuperacionPassword).where(
+                models.RecuperacionPassword.usuario_id == usuario.id,
+                models.RecuperacionPassword.usado.is_(False),
+            )
+        ):
+            anterior.usado = True
+        codigo = security.generar_codigo_recuperacion()
+        Session.add(
+            models.RecuperacionPassword(
+                usuario_id=usuario.id,
+                codigo_hash=security.hash_codigo(codigo),
+                expira_en=models.ahora() + timedelta(minutes=RECUPERACION_MINUTOS),
+            )
+        )
+        Session.commit()
+        log.info("[CORREO SIMULADO] Para %s: código de recuperación %s (válido %s min)",
+                 usuario.email, codigo, RECUPERACION_MINUTOS)
+    return salida(schemas.MensajeOut(mensaje=MENSAJE_RECUPERACION))
+
+
+@app.post("/auth/restablecer")
+def restablecer_password():
+    """Restablecer la contraseña con el código recibido. El código sirve una sola vez."""
+    datos = validar_cuerpo(schemas.RestablecerIn)
+    usuario = Session.scalar(select(models.Usuario).where(models.Usuario.email == datos.email.lower()))
+    recuperacion = None
+    if usuario is not None and usuario.activo:
+        recuperacion = Session.scalar(
+            select(models.RecuperacionPassword).where(
+                models.RecuperacionPassword.usuario_id == usuario.id,
+                models.RecuperacionPassword.codigo_hash == security.hash_codigo(datos.codigo),
+                models.RecuperacionPassword.usado.is_(False),
+                models.RecuperacionPassword.expira_en > models.ahora(),
+            )
+        )
+    if recuperacion is None:
+        raise ErrorApi(400, "CODIGO_INVALIDO", "El código no es válido o ya expiró")
+    recuperacion.usado = True
+    usuario.password_hash = security.hash_password(datos.password_nueva)
+    Session.commit()
+    return salida(schemas.MensajeOut(mensaje="Contraseña restablecida"))
 
 
 # ---------- roles y permisos ----------

@@ -19,6 +19,14 @@ paths:
           in: query
           description: Búsqueda por nombre o SKU
           schema: { type: string }
+        - name: proveedor_id
+          in: query
+          description: Productos que suministra este proveedor
+          schema: { type: integer }
+        - name: activo
+          in: query
+          description: true = solo activos, false = solo dados de baja
+          schema: { type: boolean }
         - $ref: '#/components/parameters/page'
         - $ref: '#/components/parameters/size'
       responses:
@@ -42,8 +50,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Producto' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
         '409': { description: SKU ya existe }
         '422': { $ref: '#/components/responses/ValidacionFallida' }
+        '502': { description: Proveedores no disponible }
 
   /{id}:
     parameters:
@@ -61,18 +71,30 @@ paths:
               schema: { $ref: '#/components/schemas/Producto' }
         '404': { description: No existe }
     put:
-      summary: Actualizar producto
+      summary: Actualizar producto (parcial; solo cambian los campos enviados)
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/ProductoNuevo' }
+            schema: { $ref: '#/components/schemas/ProductoActualizar' }
       responses:
         '200':
           description: Producto actualizado
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Producto' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { description: No existe }
+        '422': { $ref: '#/components/responses/ValidacionFallida' }
+    delete:
+      summary: Dar de baja un producto (queda inactivo; se conserva su historial)
+      responses:
+        '200':
+          description: Producto dado de baja
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Producto' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
         '404': { description: No existe }
 
   /categorias:
@@ -83,6 +105,9 @@ paths:
           in: query
           description: Filtra subcategorías de una categoría padre
           schema: { type: integer }
+        - name: activa
+          in: query
+          schema: { type: boolean }
       responses:
         '200':
           description: Categorías
@@ -104,6 +129,41 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Categoria' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '422': { description: Nombre vacío o categoría padre inexistente }
+
+  /categorias/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    put:
+      summary: Actualizar categoría (nombre y/o padre)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoriaNueva' }
+      responses:
+        '200':
+          description: Categoría actualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Categoria' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { description: No existe }
+        '422': { description: Nombre vacío, padre inexistente o padre igual a sí misma }
+    delete:
+      summary: Eliminar categoría (baja lógica, queda inactiva)
+      responses:
+        '200':
+          description: Categoría desactivada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Categoria' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { description: No existe }
 
   /unidades-medida:
     get:
@@ -137,6 +197,8 @@ components:
       description: Token ausente o inválido
     ValidacionFallida:
       description: Datos inválidos
+    SinPermiso:
+      description: El usuario no tiene el permiso productos.gestionar
   schemas:
     Producto:
       type: object
@@ -147,7 +209,13 @@ components:
         descripcion: { type: string }
         categoria_id: { type: integer }
         unidad_medida_id: { type: integer }
+        precio: { type: number, example: 1500.0 }
+        proveedor_ids:
+          type: array
+          items: { type: integer }
+          example: [1, 2]
         activo: { type: boolean }
+        creado_en: { type: string, format: date-time }
     ProductoNuevo:
       type: object
       required: [sku, nombre, categoria_id, unidad_medida_id]
@@ -157,6 +225,23 @@ components:
         descripcion: { type: string }
         categoria_id: { type: integer }
         unidad_medida_id: { type: integer }
+        precio: { type: number, minimum: 0, default: 0 }
+        proveedor_ids:
+          type: array
+          description: Proveedores que suministran el producto (deben existir en el servicio de Proveedores)
+          items: { type: integer }
+    ProductoActualizar:
+      type: object
+      properties:
+        nombre: { type: string }
+        descripcion: { type: string }
+        categoria_id: { type: integer }
+        unidad_medida_id: { type: integer }
+        precio: { type: number, minimum: 0 }
+        proveedor_ids:
+          type: array
+          description: Si se envía, reemplaza la lista de proveedores
+          items: { type: integer }
     PaginaProductos:
       type: object
       properties:

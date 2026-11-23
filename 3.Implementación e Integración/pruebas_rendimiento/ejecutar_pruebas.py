@@ -16,6 +16,7 @@ La etiqueta por defecto es "integrante1", "integrante2", "integrante3" o "todas"
 """
 import argparse
 import csv
+import os
 import subprocess
 import sys
 import time
@@ -167,7 +168,8 @@ def escribir_resumen(salida, pruebas):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--host", default="http://localhost:8080", help="URL del API Gateway")
+    # En el contenedor de pruebas LOCUST_HOST apunta al gateway por su nombre en la red (http://gateway:8000).
+    ap.add_argument("--host", default=os.getenv("LOCUST_HOST", "http://localhost:8080"), help="URL del API Gateway")
     ap.add_argument("--integrante", type=int, choices=sorted(INTEGRANTES), help="ejecutar solo las 15 de este integrante")
     ap.add_argument("--solo", nargs="+", metavar="Pxx", help="ejecutar solo estas pruebas")
     ap.add_argument("--rapido", action="store_true", help="30 s por prueba (solo para verificar)")

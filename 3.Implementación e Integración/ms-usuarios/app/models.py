@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Table
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -54,3 +54,27 @@ class Usuario(Base):
     ultimo_acceso: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=ahora)
     roles: Mapped[list[Rol]] = relationship(secondary=usuario_rol, lazy="selectin")
+
+
+class TokenRevocado(Base):
+    """Tokens cerrados con logout. Se rechazan hasta que expiren."""
+
+    __tablename__ = "token_revocado"
+
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(Integer, index=True)
+    expira_en: Mapped[datetime] = mapped_column(DateTime)
+    revocado_en: Mapped[datetime] = mapped_column(DateTime, default=ahora)
+
+
+class RecuperacionPassword(Base):
+    """Códigos temporales para restablecer la contraseña (se usan una sola vez)."""
+
+    __tablename__ = "recuperacion_password"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id", ondelete="CASCADE"), index=True)
+    codigo_hash: Mapped[str] = mapped_column(String(64))
+    expira_en: Mapped[datetime] = mapped_column(DateTime)
+    usado: Mapped[bool] = mapped_column(Boolean, default=False)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=ahora)

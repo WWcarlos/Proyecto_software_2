@@ -12,13 +12,17 @@ PERMISOS = {
     "compras.ordenes.gestionar": "Crear, emitir y cancelar órdenes de compra",
     "compras.recepciones.registrar": "Registrar recepciones de mercancía",
     "inventarios.movimientos.crear": "Registrar movimientos de inventario",
+    "inventarios.bodegas.gestionar": "Crear y modificar bodegas y stock mínimo",
+    "productos.gestionar": "Crear, modificar y dar de baja productos y categorías",
+    "proveedores.gestionar": "Registrar, modificar y desactivar proveedores",
+    "logistica.gestionar": "Registrar clientes, paquetes, envíos e insumos",
 }
 
 ROLES = {
     "ADMIN": ("Administrador del sistema", list(PERMISOS)),
     "BODEGUERO": (
         "Operador de bodega",
-        ["compras.recepciones.registrar", "inventarios.movimientos.crear"],
+        ["compras.recepciones.registrar", "inventarios.movimientos.crear", "logistica.gestionar"],
     ),
 }
 
@@ -39,7 +43,8 @@ def sembrar(db: Session) -> None:
         if rol is None:
             rol = Rol(nombre=nombre, descripcion=descripcion, permisos=[permisos[c] for c in codigos])
             db.add(rol)
-        elif nombre == "ADMIN":
+        else:
+            # Si el rol ya existía, se le agregan los permisos nuevos (no se quita ninguno).
             for codigo in codigos:
                 if permisos[codigo] not in rol.permisos:
                     rol.permisos.append(permisos[codigo])

@@ -9,6 +9,7 @@ from .errores import ErrorApi
 PROVEEDORES_URL = os.getenv("PROVEEDORES_URL", "http://proveedores:8000")
 PRODUCTOS_URL = os.getenv("PRODUCTOS_URL", "http://productos:8000")
 INVENTARIOS_URL = os.getenv("INVENTARIOS_URL", "http://inventarios:8000")
+ANALITICA_URL = os.getenv("ANALITICA_URL", "http://analitica:8000")
 
 _http = httpx.Client(timeout=httpx.Timeout(float(os.getenv("HTTP_TIMEOUT_SEGUNDOS", "10"))))
 
@@ -65,3 +66,29 @@ def solicitar_entrada(
         return int(respuesta.json()["id"])
     except (ValueError, KeyError, TypeError):
         raise InventariosError("Inventarios devolvió una respuesta sin id de movimiento")
+
+
+def publicar_orden_recibida(orden, recepcion) -> None:
+    """Envía a Analítica el evento orden.recibida. Si Analítica no responde, la recepción no falla."""
+    from .auth import SERVICE_TOKEN
+
+    cuerpo = {
+        "evento_id": f"recepcion-{recepcion.id}",
+        "tipo_evento": "orden.recibida",
+        "datos": {
+            "orden_id": orden.id,
+            "numero": orden.numero,
+            "estado": orden.estado,
+            "proveedor_id": orden.proveedor_id,
+            "recepcion_id": recepcion.id,
+            "bodega_id": recepcion.bodega_id,
+            "lineas": [
+                {"orden_compra_detalle_id": d.orden_compra_detalle_id, "cantidad_recibida": d.cantidad_recibida}
+                for d in recepcion.detalles
+            ],
+        },
+    }
+    try:
+        _http.post(f"{ANALITICA_URL}/eventos", json=cuerpo, headers={"X-Service-Token": SERVICE_TOKEN}, timeout=2)
+    except httpx.HTTPError:
+        pass

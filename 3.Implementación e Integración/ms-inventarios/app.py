@@ -3,6 +3,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import uuid
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 import mysql.connector
@@ -40,6 +41,14 @@ def error_response(codigo, mensaje, status_code, detalles=None):
         "mensaje": mensaje,
         "detalles": detalles or []
     }), status_code
+
+
+def requiere_permiso(permiso):
+    """El Gateway reenvía los permisos del usuario en X-User-Permissions. Devuelve un error 403 o None."""
+    permisos = {p for p in request.headers.get("X-User-Permissions", "").split(",") if p}
+    if permiso not in permisos:
+        return error_response("SIN_PERMISO", f"Se requiere el permiso {permiso}", 403)
+    return None
 
 
 def es_entero_positivo(valor):
@@ -99,10 +108,37 @@ def producto_existe(producto_id):
 
 
 def publicar_evento_analitica(movimiento):
+    enviar_evento("movimiento.registrado", f"mov-{movimiento['id']}", movimiento)
+
+
+def publicar_stock_bajo(cur, producto_id=None, bodega_ids=(), forzar=False):
+    """Envía a Analítica el evento stock.bajo con el número actual de saldos bajo el mínimo.
+
+    Solo se envía si alguno de los saldos tocados tiene stock mínimo definido (o si forzar=True,
+    al cambiar el stock mínimo), para no generar un evento por cada movimiento.
+    """
+    ids = [b for b in bodega_ids if b is not None]
+    if not forzar:
+        if not ids:
+            return
+        marcas = ", ".join(["%s"] * len(ids))
+        cur.execute(
+            f"SELECT COUNT(*) AS n FROM SALDO WHERE producto_id = %s AND bodega_id IN ({marcas}) AND stock_minimo > 0",
+            (producto_id, *ids),
+        )
+        if cur.fetchone()["n"] == 0:
+            return
+    cur.execute("SELECT COUNT(*) AS total FROM SALDO WHERE cantidad_disponible < stock_minimo")
+    total = cur.fetchone()["total"]
+    enviar_evento("stock.bajo", f"stock-{uuid.uuid4().hex}", {"total_alertas": total, "producto_id": producto_id})
+
+
+def enviar_evento(tipo_evento, evento_id, datos):
+    """POST /eventos en Analítica. Si Analítica no responde, la operación principal no falla."""
     payload = json.dumps({
-        "evento_id": f"mov-{movimiento['id']}",
-        "tipo_evento": "movimiento.registrado",
-        "datos": movimiento,
+        "evento_id": evento_id,
+        "tipo_evento": tipo_evento,
+        "datos": datos,
     }, default=str).encode("utf-8")
 
     req = urllib.request.Request(
@@ -205,6 +241,10 @@ def listar_bodegas():
 
 @app.post("/bodegas")
 def crear_bodega():
+    sin_permiso = requiere_permiso("inventarios.bodegas.gestionar")
+    if sin_permiso:
+        return sin_permiso
+
     data = request.get_json(silent=True) or {}
     codigo = (data.get("codigo") or "").strip()
     nombre = (data.get("nombre") or "").strip()
@@ -233,6 +273,82 @@ def crear_bodega():
         if e.errno == errorcode.ER_DUP_ENTRY:
             return error_response("CODIGO_DUPLICADO", "Código ya existe", 409)
         return error_response("ERROR_BD", str(e), 500)
+    finally:
+        cur.close()
+        db.close()
+
+
+def serializar_bodega(f):
+    return {
+        "id": f["id"],
+        "codigo": f["codigo"],
+        "nombre": f["nombre"],
+        "ubicacion": f["ubicacion"],
+        "activa": bool(f["activa"]),
+    }
+
+
+@app.put("/bodegas/<int:bodega_id>")
+def actualizar_bodega(bodega_id):
+    sin_permiso = requiere_permiso("inventarios.bodegas.gestionar")
+    if sin_permiso:
+        return sin_permiso
+
+    data = request.get_json(silent=True) or {}
+    cambios = {}
+    for campo in ("codigo", "nombre"):
+        if campo in data:
+            valor = str(data[campo] or "").strip()
+            if not valor:
+                return error_response("VALIDACION_FALLIDA", f"{campo} no puede estar vacío", 422)
+            cambios[campo] = valor
+    if "ubicacion" in data:
+        cambios["ubicacion"] = str(data["ubicacion"] or "").strip() or None
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT id FROM BODEGA WHERE id = %s", (bodega_id,))
+        if not cur.fetchone():
+            return error_response("NO_ENCONTRADO", "Bodega no existe", 404)
+        if cambios:
+            asignaciones = ", ".join(f"{campo} = %s" for campo in cambios)
+            cur.execute(f"UPDATE BODEGA SET {asignaciones} WHERE id = %s", (*cambios.values(), bodega_id))
+            db.commit()
+        cur.execute("SELECT id, codigo, nombre, ubicacion, activa FROM BODEGA WHERE id = %s", (bodega_id,))
+        return jsonify(serializar_bodega(cur.fetchone())), 200
+    except MySQLError as e:
+        db.rollback()
+        if e.errno == errorcode.ER_DUP_ENTRY:
+            return error_response("CODIGO_DUPLICADO", "Código ya existe", 409)
+        return error_response("ERROR_BD", str(e), 500)
+    finally:
+        cur.close()
+        db.close()
+
+
+@app.patch("/bodegas/<int:bodega_id>/estado")
+def cambiar_estado_bodega(bodega_id):
+    """Activa o desactiva una bodega. Una bodega inactiva no acepta movimientos."""
+    sin_permiso = requiere_permiso("inventarios.bodegas.gestionar")
+    if sin_permiso:
+        return sin_permiso
+
+    data = request.get_json(silent=True) or {}
+    activa = data.get("activa")
+    if not isinstance(activa, bool):
+        return error_response("VALIDACION_FALLIDA", "activa debe ser true o false", 422)
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT id FROM BODEGA WHERE id = %s", (bodega_id,))
+        if not cur.fetchone():
+            return error_response("NO_ENCONTRADO", "Bodega no existe", 404)
+        cur.execute("UPDATE BODEGA SET activa = %s WHERE id = %s", (activa, bodega_id))
+        db.commit()
+        cur.execute("SELECT id, codigo, nombre, ubicacion, activa FROM BODEGA WHERE id = %s", (bodega_id,))
+        return jsonify(serializar_bodega(cur.fetchone())), 200
     finally:
         cur.close()
         db.close()
@@ -271,6 +387,10 @@ def consultar_saldos():
 
 @app.put("/saldos/<int:producto_id>/<int:bodega_id>/stock-minimo")
 def definir_stock_minimo(producto_id, bodega_id):
+    sin_permiso = requiere_permiso("inventarios.bodegas.gestionar")
+    if sin_permiso:
+        return sin_permiso
+
     data = request.get_json(silent=True) or {}
     stock_minimo = data.get("stock_minimo")
 
@@ -308,6 +428,7 @@ def definir_stock_minimo(producto_id, bodega_id):
             (producto_id, bodega_id),
         )
         actualizado = cur.fetchone()
+        publicar_stock_bajo(cur, forzar=True)
         return jsonify(serializar_saldo(actualizado)), 200
     except MySQLError as e:
         db.rollback()
@@ -408,6 +529,10 @@ def obtener_movimiento(movimiento_id):
 
 @app.post("/movimientos")
 def registrar_movimiento():
+    sin_permiso = requiere_permiso("inventarios.movimientos.crear")
+    if sin_permiso:
+        return sin_permiso
+
     data = request.get_json(silent=True) or {}
 
     tipo = data.get("tipo")
@@ -421,7 +546,7 @@ def registrar_movimiento():
     usuario_id = obtener_usuario_id()
 
     tipos_validos = ("ENTRADA", "SALIDA", "AJUSTE", "TRASLADO", "DEVOLUCION")
-    refs_validas = (None, "ORDEN_COMPRA", "ENVIO", "AJUSTE_MANUAL")
+    refs_validas = (None, "ORDEN_COMPRA", "ENVIO", "AJUSTE_MANUAL", "DEVOLUCION_CLIENTE", "DEVOLUCION_PROVEEDOR")
 
     if tipo not in tipos_validos:
         return error_response("VALIDACION_FALLIDA", f"tipo debe ser uno de {tipos_validos}", 422)
@@ -445,13 +570,32 @@ def registrar_movimiento():
             return error_response("VALIDACION_FALLIDA", "TRASLADO requiere bodega_origen_id y bodega_destino_id", 422)
         if bodega_origen_id == bodega_destino_id:
             return error_response("VALIDACION_FALLIDA", "La bodega origen y destino no pueden ser iguales", 422)
-    if tipo in ("AJUSTE", "DEVOLUCION"):
+    if tipo == "AJUSTE":
         if bool(bodega_origen_id) == bool(bodega_destino_id):
             return error_response(
                 "VALIDACION_FALLIDA",
-                f"{tipo} requiere exactamente bodega_origen_id (salida) o bodega_destino_id (entrada)",
+                "AJUSTE requiere exactamente bodega_origen_id (salida) o bodega_destino_id (entrada)",
                 422,
             )
+    # Devolución de un cliente: la mercancía ENTRA a la bodega (bodega_destino_id).
+    # Devolución a un proveedor: la mercancía SALE de la bodega (bodega_origen_id).
+    if tipo == "DEVOLUCION":
+        if referencia_tipo == "DEVOLUCION_CLIENTE":
+            if not bodega_destino_id or bodega_origen_id:
+                return error_response(
+                    "VALIDACION_FALLIDA", "La devolución de un cliente requiere solo bodega_destino_id", 422)
+        elif referencia_tipo == "DEVOLUCION_PROVEEDOR":
+            if not bodega_origen_id or bodega_destino_id:
+                return error_response(
+                    "VALIDACION_FALLIDA", "La devolución a un proveedor requiere solo bodega_origen_id", 422)
+        else:
+            return error_response(
+                "VALIDACION_FALLIDA",
+                "DEVOLUCION requiere referencia_tipo DEVOLUCION_CLIENTE o DEVOLUCION_PROVEEDOR",
+                422,
+            )
+    elif referencia_tipo in ("DEVOLUCION_CLIENTE", "DEVOLUCION_PROVEEDOR"):
+        return error_response("VALIDACION_FALLIDA", f"{referencia_tipo} solo aplica a movimientos DEVOLUCION", 422)
 
     if not producto_existe(producto_id):
         return error_response("VALIDACION_FALLIDA", f"El producto {producto_id} no existe", 422)
@@ -463,10 +607,14 @@ def registrar_movimiento():
 
         for bid in (bodega_origen_id, bodega_destino_id):
             if bid is not None:
-                cur.execute("SELECT id FROM BODEGA WHERE id = %s", (bid,))
-                if not cur.fetchone():
+                cur.execute("SELECT id, activa FROM BODEGA WHERE id = %s", (bid,))
+                bodega = cur.fetchone()
+                if not bodega:
                     db.rollback()
                     return error_response("VALIDACION_FALLIDA", f"La bodega {bid} no existe", 422)
+                if not bodega["activa"]:
+                    db.rollback()
+                    return error_response("BODEGA_INACTIVA", f"La bodega {bid} está inactiva", 422)
 
         if bodega_origen_id is not None:
             cur.execute(
@@ -536,6 +684,7 @@ def registrar_movimiento():
         )
         creado = serializar_movimiento(cur.fetchone())
         publicar_evento_analitica(creado)
+        publicar_stock_bajo(cur, producto_id, (bodega_origen_id, bodega_destino_id))
         return jsonify(creado), 201
 
     except MySQLError as e:

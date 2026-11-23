@@ -1,6 +1,8 @@
 import base64
 import hashlib
 import os
+import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -34,8 +36,19 @@ def crear_token(usuario_id: int, email: str) -> str:
         "email": email,
         "iat": emitido,
         "exp": emitido + timedelta(seconds=JWT_EXPIRA_SEGUNDOS),
+        "jti": uuid.uuid4().hex,  # identificador del token: permite revocarlo al cerrar sesión
     }
     return jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALGORITMO)
+
+
+def generar_codigo_recuperacion() -> str:
+    """Código numérico de 6 dígitos para restablecer la contraseña."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_codigo(codigo: str) -> str:
+    # El código se guarda como hash, igual que las contraseñas (pero basta SHA-256: expira en minutos).
+    return hashlib.sha256(codigo.encode("utf-8")).hexdigest()
 
 
 def decodificar_token(token: str) -> dict:

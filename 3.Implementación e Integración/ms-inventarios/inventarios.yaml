@@ -6,10 +6,7 @@ info:
     Fuente autorizada de existencias. Registra entradas, salidas, ajustes, traslados
     y devoluciones. Expone alertas de stock mínimo.
 servers:
-  - url: /
-    description: Acceso directo al contenedor
   - url: /inventarios
-    description: A través del API Gateway
 security:
   - bearerAuth: []
 paths:
@@ -37,7 +34,57 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Bodega' }
+        '403': { description: Falta el permiso inventarios.bodegas.gestionar }
         '409': { description: Código ya existe }
+
+  /bodegas/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    put:
+      summary: Actualizar bodega (parcial; solo cambian los campos enviados)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BodegaNueva' }
+      responses:
+        '200':
+          description: Bodega actualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bodega' }
+        '403': { description: Falta el permiso inventarios.bodegas.gestionar }
+        '404': { description: No existe }
+        '409': { description: Código ya existe }
+
+  /bodegas/{id}/estado:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      summary: Activar o desactivar una bodega (una bodega inactiva no acepta movimientos)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [activa]
+              properties:
+                activa: { type: boolean }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bodega' }
+        '403': { description: Falta el permiso inventarios.bodegas.gestionar }
+        '404': { description: No existe }
 
   /saldos:
     get:
@@ -115,7 +162,7 @@ paths:
             enum: [ENTRADA, SALIDA, AJUSTE, TRASLADO, DEVOLUCION]
         - name: referencia_tipo
           in: query
-          schema: { type: string, enum: [ORDEN_COMPRA, ENVIO, AJUSTE_MANUAL] }
+          schema: { type: string, enum: [ORDEN_COMPRA, ENVIO, AJUSTE_MANUAL, DEVOLUCION_CLIENTE, DEVOLUCION_PROVEEDOR] }
         - name: referencia_id
           in: query
           schema: { type: integer }
@@ -218,7 +265,10 @@ components:
         motivo: { type: string }
         referencia_tipo:
           type: string
-          enum: [ORDEN_COMPRA, ENVIO, AJUSTE_MANUAL]
+          enum: [ORDEN_COMPRA, ENVIO, AJUSTE_MANUAL, DEVOLUCION_CLIENTE, DEVOLUCION_PROVEEDOR]
+          description: >
+            Obligatorio en DEVOLUCION. DEVOLUCION_CLIENTE entra a la bodega (solo bodega_destino_id);
+            DEVOLUCION_PROVEEDOR sale de la bodega (solo bodega_origen_id).
         referencia_id: { type: integer }
     Movimiento:
       allOf:
